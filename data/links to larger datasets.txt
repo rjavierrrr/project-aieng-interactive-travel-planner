@@ -1,0 +1,26 @@
+40 years of data, unchunked, in spanish: a serious challenge for the most advanced students
+https://education-team-2020.s3.eu-west-1.amazonaws.com/ai-eng/PR+files/elmundo_es_40years.zip
+
+
+40 years of data, chunked by page, in spanish: removes the need for a chunking strategy
+https://education-team-2020.s3.eu-west-1.amazonaws.com/ai-eng/PR+files/elmundo_chunked_es_40years.zip
+
+
+40 years of data, head page of the newspaper, in spanish: significantly smaller dataset if size is an issue. Can be made smaller by reducing the number of years
+https://education-team-2020.s3.eu-west-1.amazonaws.com/ai-eng/PR+files/elmundo_chunked_es_page1_40years.zip
+
+
+significantly shorter dataset and pre-chunked. A more modest challenge focusing more on RAG mechanics than the morose details of chunking and data preparation.
+https://education-team-2020.s3.eu-west-1.amazonaws.com/ai-eng/PR+files/elmundo_chunked_es_page1_15years.zip
+
+
+same dataset as before but translated to english. Removes the need to use a multilingual model and distills the required actions to core retrieval.
+https://education-team-2020.s3.eu-west-1.amazonaws.com/ai-eng/PR+files/elmundo_chunked_en_page1_15years.zip
+
+
+
+contains raw .txt files for several Puerto Rico landmarks (raw html extracted from Wikipedia)
+https://education-team-2020.s3.eu-west-1.amazonaws.com/ai-eng/PR+files/landmarks.zip
+
+contains raw .txt files for several Puerto Rico municipalities (raw html extracted from Wikipedia)
+https://education-team-2020.s3.eu-west-1.amazonaws.com/ai-eng/PR+files/municipalities.zip
