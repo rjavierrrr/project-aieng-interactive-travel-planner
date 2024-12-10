@@ -8,7 +8,7 @@ Welcome to your final project. This is the culmination of your learning journey 
 
 In this project, you are going to use all the AI Engineering skills you have acquired during the course of the last few weeks to build an interactive travel planner for the beautiful island of Puerto Rico. By the end of this project, you will present a working application that cooperates with a visitor to help them build a travel itinerary suitable to their personal preferences.
 
-There is a minimal set of requirements—the Minimum Viable Product (MVP)—that you will need to implement to complete the project successfully, but the way your project will distinguish itself is by whatever features you add to this minimal skeleton. Over the course of the project statement, you will find several hints and suggestions of improvement over the MVP in collapsible sections like this:
+There is a minimal set of requirements — the Minimum Viable Product (MVP) — that you will need to implement to complete the project successfully, but the way your project will distinguish itself is by whatever features you add to this minimal skeleton. Over the course of the project statement, you will find several hints and suggestions of improvement over the MVP in collapsible sections like this:
 
 <details>
  <summary>Guide: A collapsible section</summary>
@@ -148,25 +148,24 @@ The system on your backend should be able to support the following interaction l
 You should select a tone of voice for your chatbot and fine-tune it to its intended function.
 
 1. Utilize a powerful LLM, such as the latest models from Anthropic, OpenAI, Google, or Meta, to generate sample interactions that follow your preferred tone of voice. You can include few-shot examples during this generation. Also, make sure to include examples of interactions where the bot refuses to respond or re-steers the conversation back to its intended loop.
-2. use the sample interactions generated in 1. to tune a smaller LLM for these specific tasks. You can use full fine tuning, LoRA, or any other technique to make your weaker model more specialized.
+2. Use the sample interactions generated in 1. to tune a smaller LLM for these specific tasks. You can use full fine tuning, LoRA, or any other technique to make your weaker model more specialized.
 
 ---
 
 ## Evaluation process
 
-
 You must evaluate your system. 
-Below - in ascending order of complexity - are some evaluation options. You must complete at least do step 1.
+Below - in ascending order of complexity - are some evaluation options. You must complete at least step 1.
 
 1. Evaluate your system qualitatively - test your system thoroughly and frequently. Log and discuss your findings.
 
-2. Create pairs of Questions-Answers that you consider the ground truth. A way to do this can be leveraging on an LLM application (ChatGPT, Claude, etc) to create 30 to 50 correct answers. After, consider using a metrics like [ROUGE](https://en.wikipedia.org/wiki/ROUGE_(metric)) to identify if your generated answer matches the correct answer
+2. Create pairs of Questions-Answers that you consider the ground truth. A way to do this can be leveraging on an LLM application (ChatGPT, Claude, etc) to create 30 to 50 correct answers. After, consider using a metrics like [ROUGE](https://en.wikipedia.org/wiki/ROUGE_(metric)) to identify if your generated answer matches the correct answer.
 
 3. *LLM-as-a-Judge*: the concept of using *LLM-as-a-Judge* is to have **another** LLM evaluating if the generated answer was correct, based on:
 
  	- The user's question/input
 	- The generated answer
-	- The available information (documents, websources, etc)
+	- The available information (documents, web sources, etc.)
 
 This *LLM-as-a-Judge* should evaluate each answer with a quantitative score.
 
@@ -182,4 +181,3 @@ Your model should be served in a cloud architecture. It does not need to be publ
  > It does not **need** to be public, and it does not **need** to have a pleasant interface, but it can be a point of improvement.
 
 </details>
-
