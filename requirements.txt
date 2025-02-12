@@ -1,0 +1,11 @@
+streamlit
+requests
+openai
+langchain
+sentence-transformers
+faiss-cpu
+streamlit-folium
+folium
+beautifulsoup4
+geopy
+datetime
