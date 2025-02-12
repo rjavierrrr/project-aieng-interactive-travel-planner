@@ -10,3 +10,4 @@ beautifulsoup4
 geopy
 datetime
 langchain-community
+tiktoken
