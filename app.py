@@ -15,7 +15,7 @@ from geopy.geocoders import Nominatim
 from datetime import datetime
 
 # Load OpenAI API Key from environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.api_key = os.getenv("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")
 
 # Load embedding model
 embeddings = OpenAIEmbeddings()
