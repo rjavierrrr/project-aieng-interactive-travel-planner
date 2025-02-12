@@ -3,7 +3,7 @@ name: Deploy Streamlit App
 on:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   deploy:
@@ -24,7 +24,6 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Streamlit App
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }} 
         run: |
+          export OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
           streamlit run app.py --server.port 8501 --server.headless true
