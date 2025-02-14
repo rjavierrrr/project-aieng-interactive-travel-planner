@@ -10,7 +10,6 @@ from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from bs4 import BeautifulSoup
 from datetime import datetime
-import hashlib
 
 # Cargar API Keys desde variables de entorno
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -28,10 +27,11 @@ def chunk_text(text, chunk_size=500):
     words = text.split()
     return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
-# Cargar y limpiar archivos
-def load_cleaned_texts(directory):
+# Cargar solo los primeros 30 archivos y limpiar textos
+def load_cleaned_texts(directory, max_files=30):
     texts = []
-    for filename in os.listdir(directory):
+    files = sorted(os.listdir(directory))[:max_files]  # Solo los primeros 30 archivos
+    for filename in files:
         with open(os.path.join(directory, filename), "r", encoding="utf-8") as file:
             raw_html = file.read()
             soup = BeautifulSoup(raw_html, "html.parser")
@@ -43,7 +43,7 @@ def load_cleaned_texts(directory):
 VECTOR_DB_PATH = "vector_store/faiss_index"
 
 if os.path.exists(DATA_DIR):
-    landmarks = load_cleaned_texts(DATA_DIR)
+    landmarks = load_cleaned_texts(DATA_DIR, max_files=30)
 else:
     landmarks = []
 
