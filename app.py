@@ -7,58 +7,64 @@ from langchain.vectorstores import FAISS
 from langchain.llms import OpenAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.docstore.document import Document
 from streamlit_folium import folium_static
 import folium
 import json
 from bs4 import BeautifulSoup
 from geopy.geocoders import Nominatim
-from datetime import datetime
+from dotenv import load_dotenv
 
-# Load OpenAI API Key from environment variable
+# 🔹 Cargar variables de entorno
+load_dotenv()
+
+# 🔹 Configurar API Keys
 openai.api_key = os.getenv("OPENAI_API_KEY")
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")  # Nueva API Key para WeatherAPI
 
-# Load embedding model
+# 🔹 Configurar embeddings de OpenAI
 embeddings = OpenAIEmbeddings()
 
-# Load data from text files
+# 🔹 Directorio de datos
 DATA_DIR = "data"
-landmarks, municipalities, news = [], [], []
 
-# User-selected locked locations
-locked_locations = []
+# 🔹 Función para cargar archivos de texto y dividir en fragmentos
+def load_and_split_texts(directory):
+    documents = []
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
 
-def load_text_files(directory):
-    texts = []
-    for filename in os.listdir(directory):
-        with open(os.path.join(directory, filename), "r", encoding="utf-8") as file:
-            texts.append(file.read())
-    return texts
+    for folder in os.listdir(directory):
+        folder_path = os.path.join(directory, folder)
+        if os.path.isdir(folder_path):
+            for filename in os.listdir(folder_path):
+                file_path = os.path.join(folder_path, filename)
+                if filename.endswith(".txt"):
+                    with open(file_path, "r", encoding="utf-8") as file:
+                        text = file.read().strip()
+                        if text:
+                            docs = text_splitter.split_text(text)
+                            for doc in docs:
+                                documents.append(Document(page_content=doc, metadata={"source": filename}))
+    
+    return documents
 
-if os.path.exists(f"{DATA_DIR}/landmarks"):
-    landmarks = load_text_files(f"{DATA_DIR}/landmarks")
-if os.path.exists(f"{DATA_DIR}/municipalities"):
-    municipalities = load_text_files(f"{DATA_DIR}/municipalities")
-if os.path.exists(f"{DATA_DIR}/news"):
-    news = load_text_files(f"{DATA_DIR}/news")
+# 🔹 Cargar y dividir los textos
+documents = load_and_split_texts(DATA_DIR)
 
-# Scrape additional location data from Wikipedia
-def scrape_location_info(place):
-    url = f"https://en.wikipedia.org/wiki/{place.replace(' ', '_')}"
-    response = requests.get(url)
-    if response.status_code == 200:
-        soup = BeautifulSoup(response.text, "html.parser")
-        paragraphs = soup.find_all("p")
-        return paragraphs[0].text if paragraphs else "No summary available."
-    return "Could not retrieve information."
+# 🔹 Verificar si FAISS ya existe para cargarlo o generarlo
+FAISS_INDEX_PATH = "faiss_index"
 
-# Combine all texts for embedding
-documents = landmarks + municipalities + news
+if os.path.exists(FAISS_INDEX_PATH):
+    vector_store = FAISS.load_local(FAISS_INDEX_PATH, embeddings)
+else:
+    vector_store = FAISS.from_documents(documents, embeddings)
+    vector_store.save_local(FAISS_INDEX_PATH)
+    print("✅ FAISS index saved successfully!")
 
-# Create FAISS vector store
-vector_store = FAISS.from_texts(documents, embeddings)
 retriever = vector_store.as_retriever()
 
-# Define a custom prompt with tone and few-shot learning
+# 🔹 Definir el prompt para el asistente de viajes
 prompt_template = PromptTemplate(
     template="""
     You are a friendly and knowledgeable travel assistant specializing in Puerto Rico tourism. 
@@ -76,15 +82,21 @@ prompt_template = PromptTemplate(
 
 qa_chain = RetrievalQA.from_chain_type(llm=OpenAI(), retriever=retriever, chain_type_kwargs={"prompt": prompt_template})
 
-# OpenWeather API Key (Replace with your actual API key)
-API_KEY = "YOUR_OPENWEATHER_API_KEY"
-
 def get_weather(location):
-    """Fetch weather data for a given location."""
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid={API_KEY}&units=metric"
+    """Fetch weather data for a given location using WeatherAPI."""
+    url = f"http://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={location}&aqi=no"
     response = requests.get(url)
     if response.status_code == 200:
-        return response.json()
+        weather_data = response.json()
+        return {
+            "location": weather_data["location"]["name"],
+            "region": weather_data["location"]["region"],
+            "country": weather_data["location"]["country"],
+            "temperature": weather_data["current"]["temp_c"],
+            "condition": weather_data["current"]["condition"]["text"],
+            "humidity": weather_data["current"]["humidity"],
+            "wind_kph": weather_data["current"]["wind_kph"],
+        }
     return {"error": "Could not fetch weather data."}
 
 def recommend_locations(user_interest):
@@ -103,33 +115,43 @@ def generate_itinerary(locations):
     itinerary = {f"day_{i+1}": {"location": location, "coordinates": get_coordinates(location)} for i, location in enumerate(locations)}
     return json.dumps(itinerary, indent=4)
 
-# Streamlit UI
+# 🔹 Configurar la interfaz en Streamlit
 st.title("Puerto Rico Travel Planner")
 
-# Ask user for travel dates with a date picker
+# 🔹 Selección de fechas
 start_date = st.date_input("Select your travel start date:")
 end_date = st.date_input("Select your travel end date:")
 
-# Ask for user interests
+# 🔹 Capturar intereses del usuario
 interest = st.text_input("Enter your travel interest (e.g., beaches, history, hiking):")
+
+locked_locations = []
+
 if st.button("Get Recommendations"):
     recommendations = recommend_locations(interest)
     st.write("Recommended places to visit:")
     st.write(recommendations)
     
-    # Allow users to lock locations
+    # 🔹 Permitir al usuario bloquear ubicaciones
     selected_location = st.selectbox("Lock a location to visit", recommendations.split('\n'))
     if st.button("Lock Location"):
         locked_locations.append(selected_location)
         st.write(f"Locked Locations: {locked_locations}")
     
-    # Generate itinerary with coordinates
+    # 🔹 Generar itinerario con coordenadas
     itinerary = generate_itinerary(locked_locations)
     st.write("Suggested Itinerary with Coordinates:")
     st.json(itinerary)
     
-    # Check weather dependency
+    # 🔹 Verificar el clima en los lugares seleccionados
     for loc in locked_locations:
         weather = get_weather(loc)
-        if "rain" in str(weather).lower():
-            st.warning(f"Warning: {loc} might be affected by bad weather!")
+        if "error" not in weather:
+            st.write(f"🌦 **Weather in {weather['location']}**")
+            st.write(f"📍 {weather['region']}, {weather['country']}")
+            st.write(f"🌡 Temperature: {weather['temperature']}°C")
+            st.write(f"☁ Condition: {weather['condition']}")
+            st.write(f"💨 Wind: {weather['wind_kph']} kph")
+            st.write(f"💧 Humidity: {weather['humidity']}%")
+        else:
+            st.warning(f"Could not retrieve weather for {loc}")
