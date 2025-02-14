@@ -24,7 +24,7 @@ VECTOR_STORE_PATH = "vector_store.pkl"
 
 # 📌 Leer datos desde `data/`
 DATA_DIR = "data"
-landmarks, municipalities = [], []
+landmarks = []
 
 def load_text_files(directory):
     texts = []
@@ -35,11 +35,11 @@ def load_text_files(directory):
 
 if os.path.exists(f"{DATA_DIR}/landmarks"):
     landmarks = load_text_files(f"{DATA_DIR}/landmarks")
-if os.path.exists(f"{DATA_DIR}/municipalities"):
-    municipalities = load_text_files(f"{DATA_DIR}/municipalities")
+# if os.path.exists(f"{DATA_DIR}/municipalities"):
+#     municipalities = load_text_files(f"{DATA_DIR}/municipalities")
 
 # 📌 Unir data sin `news`
-documents = landmarks + municipalities
+documents = landmarks
 
 # 📌 Fragmentación (`chunking`) para evitar `RateLimitError`
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=256, chunk_overlap=20)
