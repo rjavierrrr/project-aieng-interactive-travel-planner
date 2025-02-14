@@ -26,14 +26,31 @@ BASE_DATA_DIR = "data"
 LANDMARKS_DIR = os.path.join(BASE_DATA_DIR, "landmark")
 MUNICIPALITIES_DIR = os.path.join(BASE_DATA_DIR, "municipalities")
 
+# Obtener coordenadas usando OpenStreetMap
+def get_coordinates(location):
+    url = f"https://nominatim.openstreetmap.org/search?q={location}&format=json&limit=1"
+    response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+    if response.status_code == 200:
+        data = response.json()
+        if data:
+            return {"latitude": data[0]["lat"], "longitude": data[0]["lon"]}
+    return {"latitude": "N/A", "longitude": "N/A"}
+
 # Función para dividir texto en fragmentos pequeños
 def chunk_text(text, chunk_size=500):
     words = text.split()
     return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
+# Generar resumen automático de lugares
+def generate_summary(text):
+    prompt = f"Summarize the following tourist location information in two sentences: {text}"
+    chat_model = ChatOpenAI(model=LLM_MODEL)
+    response = chat_model.invoke(prompt)
+    return response if response else "No summary available."
+
 # Cargar y limpiar textos de múltiples directorios
 def load_cleaned_texts(directories):
-    texts = []
+    locations_data = []
     for directory in directories:
         if not os.path.exists(directory):
             continue
@@ -46,11 +63,17 @@ def load_cleaned_texts(directories):
                     script.extract()
                 text = soup.get_text(separator=" ").strip()
                 cleaned_text = " ".join(text.split())
-                texts.extend(chunk_text(cleaned_text))
-    return texts
+                summary = generate_summary(cleaned_text)
+                coordinates = get_coordinates(filename.replace(".txt", ""))
+                locations_data.append({
+                    "name": filename.replace(".txt", ""),
+                    "summary": summary,
+                    "coordinates": coordinates
+                })
+    return locations_data
 
 # Cargar datos de ambas carpetas
-landmarks = load_cleaned_texts([LANDMARKS_DIR, MUNICIPALITIES_DIR])
+locations_data = load_cleaned_texts([LANDMARKS_DIR, MUNICIPALITIES_DIR])
 
 # Cargar datos solo si el índice no existe
 VECTOR_DB_PATH = "vector_store/faiss_index"
@@ -59,11 +82,11 @@ def get_vector_store():
     if os.path.exists(VECTOR_DB_PATH):
         return FAISS.load_local(VECTOR_DB_PATH, OpenAIEmbeddings(model=EMBEDDING_MODEL), allow_dangerous_deserialization=True)
     else:
-        if not landmarks:
+        if not locations_data:
             st.error("No landmark or municipality data found. Please check your data directory.")
             st.stop()
         embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
-        vector_store = FAISS.from_texts(landmarks, embeddings)
+        vector_store = FAISS.from_texts([json.dumps(loc) for loc in locations_data], embeddings)
         vector_store.save_local(VECTOR_DB_PATH)
         return vector_store
 
@@ -76,21 +99,17 @@ prompt_template = PromptTemplate(
     You are a chatbot specialized in Puerto Rico tourism.
     Your job is to help users plan their trip by providing detailed itineraries based on their preferences.
     
-    If the user specifies the number of days and an interest (e.g., beaches, history, hiking), create a structured itinerary where each day has specific suggested locations, activities, and key landmarks.
-    
     The itinerary **MUST** follow this exact format:
     
     Day 1:
-    - Visit location A
+    - Visit location A (Lat: X, Lon: Y)
     - Enjoy activity B
     - Stay at location C
     
     Day 2:
-    - Visit location D
+    - Visit location D (Lat: X, Lon: Y)
     - Try activity E
     - Explore location F
-    
-    If any day is missing, ensure to generate an activity for it.
     
     Use the following knowledge base:
     {context}
@@ -103,28 +122,6 @@ prompt_template = PromptTemplate(
 
 combine_documents_chain = load_qa_chain(llm=ChatOpenAI(model=LLM_MODEL), chain_type="stuff")
 qa_chain = RetrievalQA(retriever=retriever, combine_documents_chain=combine_documents_chain)
-
-# Obtener datos del clima
-def get_weather(locations, days):
-    weather_reports = {}
-    for location in locations:
-        url = f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={location}&days={days}"
-        response = requests.get(url)
-        if response.status_code == 200:
-            weather = response.json()
-            forecast = weather.get("forecast", {}).get("forecastday", [])
-            if forecast:
-                forecasts = []
-                for day in forecast:
-                    forecasts.append({
-                        "date": day.get("date", "N/A"),
-                        "temperature": day.get("day", {}).get("avgtemp_c", "N/A"),
-                        "condition": day.get("day", {}).get("condition", {}).get("text", "N/A"),
-                        "humidity": day.get("day", {}).get("avghumidity", "N/A"),
-                        "wind": day.get("day", {}).get("maxwind_kph", "N/A")
-                    })
-                weather_reports[location] = forecasts
-    return weather_reports
 
 # Interfaz con Streamlit
 st.title("Puerto Rico Travel Chatbot")
@@ -142,11 +139,6 @@ if start_date and end_date and interest:
     response = qa_chain.invoke({"query": query, "days": num_days, "interest": interest})
     itinerary = response.get("result", "I'm not sure how to create an itinerary for that.")
     st.session_state["messages"].append({"role": "assistant", "content": itinerary})
-    
-    # Extraer destinos del itinerario y mostrar clima
-    destinations = re.findall(r"\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b", itinerary)
-    weather_report = get_weather(destinations, num_days)
-    st.session_state["messages"].append({"role": "assistant", "content": f"Weather forecast for your trip: {json.dumps(weather_report, indent=2)}"})
 
 for message in st.session_state["messages"]:
     with st.chat_message(message["role"]):
