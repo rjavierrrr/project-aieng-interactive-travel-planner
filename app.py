@@ -2,15 +2,15 @@ import os
 import streamlit as st
 import openai
 import requests
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import FAISS
-from langchain.chat_models import ChatOpenAI
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_community.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
 
-# 🔹 Cargar variables de entorno desde .env
+# 🔹 Cargar variables de entorno
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
@@ -45,28 +45,28 @@ BATCH_SIZE = 20
 vector_store = FAISS.from_texts(flattened_docs[:BATCH_SIZE], embeddings)
 retriever = vector_store.as_retriever()
 
-# 🔹 Prompt corregido para incluir 'context'
+# 🔹 Prompt actualizado para evitar errores con RetrievalQA
 prompt_template = PromptTemplate(
     template="""
     You are an expert travel assistant for Puerto Rico.
     Generate an itinerary for {days} days of travel based on the following information:
     
-    {context}
+    {query}
     
     Example:
     User: "I have 3 days, I like nature and culture."
     Assistant: "Day 1: Visit El Yunque Rainforest..."
     
-    Now generate the best itinerary based on the given context.
+    Now generate the best itinerary based on the given information.
     """,
-    input_variables=["days", "context"]
+    input_variables=["days", "query"]
 )
 
 # 🔹 Ajuste de RetrievalQA con el nuevo Prompt
 qa_chain = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(model=LLM_MODEL),
     retriever=retriever,
-    chain_type_kwargs={"prompt": prompt_template, "document_variable_name": "context"}
+    chain_type_kwargs={"prompt": prompt_template}
 )
 
 # 🔹 API del clima (WeatherAPI)
@@ -88,8 +88,8 @@ days = st.number_input("How many days will you travel?", min_value=1, max_value=
 interest = st.text_input("Enter your travel interest (e.g., beaches, history, hiking):")
 
 if st.button("Get Itinerary"):
-    question = f"I have {days} days and I am interested in {interest}."
-    itinerary = qa_chain.run({"days": days, "context": question})
+    query = f"I have {days} days and I am interested in {interest}."
+    itinerary = qa_chain.invoke({"days": days, "query": query})  # 🔹 Se usa `.invoke()` en vez de `.run()`
     
     st.write("### Suggested Itinerary:")
     st.write(itinerary)
