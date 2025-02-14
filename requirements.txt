@@ -10,3 +10,4 @@ folium
 streamlit-folium
 pickle-mixin
 langchain-community
+tiktoken
