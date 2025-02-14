@@ -45,13 +45,16 @@ BATCH_SIZE = 20
 vector_store = FAISS.from_texts(flattened_docs[:BATCH_SIZE], embeddings)
 retriever = vector_store.as_retriever()
 
-# 🔹 Prompt actualizado (solo usa `query`)
+# 🔹 Prompt actualizado (incluye `context`)
 prompt_template = PromptTemplate(
     template="""
     You are an expert travel assistant for Puerto Rico.
-    Generate an itinerary based on the following query:
+    Generate an itinerary based on the following query and relevant context:
 
-    {query}
+    Query: {query}
+
+    Relevant Context:
+    {context}
 
     Example:
     User: "I have 3 days, I like nature and culture."
@@ -59,14 +62,14 @@ prompt_template = PromptTemplate(
     
     Now generate the best itinerary based on the given information.
     """,
-    input_variables=["query"]
+    input_variables=["query", "context"]
 )
 
 # 🔹 Ajuste de RetrievalQA con el nuevo Prompt
 qa_chain = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(model=LLM_MODEL),
     retriever=retriever,
-    chain_type_kwargs={"prompt": prompt_template}
+    chain_type_kwargs={"prompt": prompt_template, "document_variable_name": "context"}
 )
 
 # 🔹 API del clima (WeatherAPI)
