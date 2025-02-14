@@ -64,10 +64,10 @@ retriever = vector_store.as_retriever()
 prompt_template = PromptTemplate(
     template="""
     You are a travel assistant specialized in Puerto Rico tourism.
-    User wants to visit places for {days} days.
+    The user wants to visit places for {days} days.
     Suggest a detailed itinerary based on available landmarks.
     
-    Query: {query}
+    Question: {query}
     """,
     input_variables=["days", "query"]
 )
@@ -76,8 +76,7 @@ prompt_template = PromptTemplate(
 qa_chain = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(model=LLM_MODEL),
     retriever=retriever,
-    chain_type_kwargs={"prompt": prompt_template},
-    input_key="query",  # 🔹 Corregido para que coincida con la entrada esperada
+    chain_type_kwargs={"prompt": prompt_template}
 )
 
 # Obtener datos del clima
@@ -97,13 +96,13 @@ interest = st.text_input("Enter your travel interest (e.g., beaches, history, hi
 
 if st.button("Get Itinerary"):
     query = f"I am interested in {interest} and have {days} days."
-    itinerary = qa_chain.invoke({"query": query})  # 🔹 Ahora pasamos `query`, que es lo que espera
+    itinerary = qa_chain.invoke({"query": query, "days": days})  # 🔹 Ahora pasamos los argumentos correctos
 
     st.write("### Suggested Itinerary:")
-    st.write(itinerary)
+    st.write(itinerary["result"])  # 🔹 Obtener la respuesta del diccionario de salida
 
     # Clima para el primer destino del itinerario
     st.write("### Weather Forecast:")
-    first_location = itinerary.split("\n")[0] if itinerary else "San Juan"
+    first_location = itinerary["result"].split("\n")[0] if itinerary["result"] else "San Juan"
     weather_data = get_weather(first_location)
     st.json(weather_data)
