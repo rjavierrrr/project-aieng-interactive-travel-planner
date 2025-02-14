@@ -13,25 +13,25 @@ from langchain.prompts import PromptTemplate
 from bs4 import BeautifulSoup
 from datetime import datetime
 
-# Cargar API Keys desde variables de entorno
+# Load API Keys
 openai.api_key = os.getenv("OPENAI_API_KEY")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
-# Definir modelo optimizado
+# Define model
 LLM_MODEL = "gpt-3.5-turbo"
 EMBEDDING_MODEL = "text-embedding-ada-002"
 
-# Directorio de datos
+# Data directories
 BASE_DATA_DIR = "data"
 LANDMARKS_DIR = os.path.join(BASE_DATA_DIR, "landmark")
 MUNICIPALITIES_DIR = os.path.join(BASE_DATA_DIR, "municipalities")
 
-# Función para dividir texto en fragmentos pequeños
+# Function to split text into chunks
 def chunk_text(text, chunk_size=500):
     words = text.split()
     return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
-# Cargar y limpiar textos de múltiples directorios
+# Load and clean texts from directories
 def load_cleaned_texts(directories):
     texts = []
     for directory in directories:
@@ -49,10 +49,10 @@ def load_cleaned_texts(directories):
                 texts.extend(chunk_text(cleaned_text))
     return texts
 
-# Cargar datos de ambas carpetas
+# Load data
 landmarks = load_cleaned_texts([LANDMARKS_DIR, MUNICIPALITIES_DIR])
 
-# Cargar datos solo si el índice no existe
+# Vector database path
 VECTOR_DB_PATH = "vector_store/faiss_index"
 
 def get_vector_store():
@@ -70,27 +70,27 @@ def get_vector_store():
 vector_store = get_vector_store()
 retriever = vector_store.as_retriever()
 
-# Definir prompt para el chatbot con 'context'
+# Updated prompt to enforce itinerary structure
 prompt_template = PromptTemplate(
     template="""
     You are a chatbot specialized in Puerto Rico tourism.
-    Your job is to help users plan their trip by providing detailed itineraries based on their preferences.
+    Your task is to create a structured travel itinerary based on the user's preferences.
     
-    If the user specifies the number of days and an interest (e.g., beaches, history, hiking), create a structured itinerary where each day has specific suggested locations, activities, and key landmarks.
+    User request: "I am traveling for {days} days and I am interested in {interest}."
     
-    Example output:
+    Provide a detailed itinerary where each day includes:
+    - A main location to visit
+    - Suggested activities
+    - Recommended places to eat
+    - Additional tips or nearby attractions
+    
+    Example Output:
     Day 1:
-    - Visit location A
-    - Enjoy activity B
-    - Stay at location C
+    - Morning: Visit {context[0]}
+    - Afternoon: Try an activity at {context[1]}
+    - Evening: Dinner at {context[2]}
     
-    Day 2:
-    - Visit location D
-    - Try activity E
-    - Explore location F
-    
-    Use the following knowledge base:
-    {context}
+    Continue this structure for the entire {days}-day trip.
     
     User: I am traveling for {days} days and I am interested in {interest}.
     Assistant:
@@ -101,7 +101,7 @@ prompt_template = PromptTemplate(
 combine_documents_chain = load_qa_chain(llm=ChatOpenAI(model=LLM_MODEL), chain_type="stuff")
 qa_chain = RetrievalQA(retriever=retriever, combine_documents_chain=combine_documents_chain)
 
-# Obtener datos del clima
+# Function to fetch weather data
 def get_weather(locations, days):
     weather_reports = {}
     for location in locations:
@@ -111,19 +111,17 @@ def get_weather(locations, days):
             weather = response.json()
             forecast = weather.get("forecast", {}).get("forecastday", [])
             if forecast:
-                forecasts = []
-                for day in forecast:
-                    forecasts.append({
-                        "date": day.get("date", "N/A"),
-                        "temperature": day.get("day", {}).get("avgtemp_c", "N/A"),
-                        "condition": day.get("day", {}).get("condition", {}).get("text", "N/A"),
-                        "humidity": day.get("day", {}).get("avghumidity", "N/A"),
-                        "wind": day.get("day", {}).get("maxwind_kph", "N/A")
-                    })
+                forecasts = [{
+                    "date": day.get("date", "N/A"),
+                    "temperature": day.get("day", {}).get("avgtemp_c", "N/A"),
+                    "condition": day.get("day", {}).get("condition", {}).get("text", "N/A"),
+                    "humidity": day.get("day", {}).get("avghumidity", "N/A"),
+                    "wind": day.get("day", {}).get("maxwind_kph", "N/A")
+                } for day in forecast]
                 weather_reports[location] = forecasts
     return weather_reports
 
-# Interfaz con Streamlit
+# Streamlit UI
 st.title("Puerto Rico Travel Chatbot")
 
 if "messages" not in st.session_state:
@@ -136,14 +134,19 @@ interest = st.text_input("What type of trip are you interested in? (e.g., beache
 if start_date and end_date and interest:
     num_days = (end_date - start_date).days
     query = f"I am traveling for {num_days} days and I am interested in {interest}."
-    response = qa_chain.invoke({"query": query, "days": num_days, "interest": interest})
+    
+    # Retrieve relevant context
+    retrieved_docs = retriever.get_relevant_documents(query)
+    st.write(f"Retrieved Context: {retrieved_docs}")
+    
+    response = qa_chain.invoke({"query": query, "days": num_days, "interest": interest, "context": retrieved_docs})
     itinerary = response.get("result", "I'm not sure how to create an itinerary for that.")
     st.session_state["messages"].append({"role": "assistant", "content": itinerary})
     
-    # Extraer destinos del itinerario y mostrar clima
+    # Extract destinations for weather forecast
     destinations = re.findall(r"\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b", itinerary)
     weather_report = get_weather(destinations, num_days)
-    st.session_state["messages"].append({"role": "assistant", "content": f"Weather forecast for your trip: {json.dumps(weather_report, indent=2)}"})
+    st.session_state["messages"].append({"role": "assistant", "content": f"Weather forecast: {json.dumps(weather_report, indent=2)}"})
 
 for message in st.session_state["messages"]:
     with st.chat_message(message["role"]):
