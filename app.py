@@ -20,7 +20,7 @@ LLM_MODEL = "gpt-3.5-turbo"
 EMBEDDING_MODEL = "text-embedding-ada-002"
 
 # Directorio de datos
-DATA_DIR = "data/landmarks"
+DATA_DIR = "data/landmark"
 
 # Función para dividir texto en fragmentos pequeños
 def chunk_text(text, chunk_size=500):
