@@ -83,10 +83,10 @@ prompt_template = PromptTemplate(
     Use the following knowledge base:
     {context}
     
-    User: {query}
+    User: I am traveling for {days} days and I am interested in {interest}.
     Assistant:
     """,
-    input_variables=["query", "context"]
+    input_variables=["days", "interest", "context"]
 )
 
 combine_documents_chain = load_qa_chain(llm=ChatOpenAI(model=LLM_MODEL), chain_type="stuff")
@@ -119,27 +119,23 @@ st.title("Puerto Rico Travel Chatbot")
 
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
-    st.session_state["messages"].append({"role": "assistant", "content": "Hello! Select your travel dates using the date picker below."})
 
 start_date = st.date_input("Select your arrival date:")
 end_date = st.date_input("Select your departure date:")
+interest = st.text_input("What type of trip are you interested in? (e.g., beaches, history, hiking)")
 
-if start_date and end_date:
+if start_date and end_date and interest:
     num_days = (end_date - start_date).days
-    st.session_state["messages"].append({"role": "assistant", "content": f"You are planning a {num_days}-day trip. Let me help you with an itinerary!"})
+    query = f"I am traveling for {num_days} days and I am interested in {interest}."
+    response = qa_chain.invoke({"query": query, "days": num_days, "interest": interest})
+    itinerary = response.get("result", "I'm not sure how to create an itinerary for that.")
+    st.session_state["messages"].append({"role": "assistant", "content": itinerary})
+    
+    # Extraer destinos del itinerario y mostrar clima
+    destinations = re.findall(r"\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b", itinerary)
+    weather_report = get_weather(destinations, num_days)
+    st.session_state["messages"].append({"role": "assistant", "content": f"Weather forecast for your trip: {json.dumps(weather_report, indent=2)}"})
 
 for message in st.session_state["messages"]:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
-
-user_input = st.chat_input("Ask me about travel destinations in Puerto Rico...")
-
-if user_input:
-    st.session_state["messages"].append({"role": "user", "content": user_input})
-    with st.chat_message("user"):
-        st.markdown(user_input)
-    response = qa_chain.invoke({"query": user_input})
-    bot_response = response.get("result", "I'm not sure how to answer that. Try asking something else!")
-    with st.chat_message("assistant"):
-        st.markdown(bot_response)
-    st.session_state["messages"].append({"role": "assistant", "content": bot_response})
