@@ -2,13 +2,13 @@ import os
 import streamlit as st
 import openai
 import requests
+from dotenv import load_dotenv
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from dotenv import load_dotenv
 
 # 🔹 Cargar variables de entorno
 load_dotenv()
@@ -22,8 +22,8 @@ LLM_MODEL = "gpt-3.5-turbo"
 # 🔹 Cargar embeddings
 embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
 
-# 🔹 Directorio de datos
-DATA_DIR = "data/landmark"
+# 🔹 Directorio de datos (solo landmarks)
+DATA_DIR = "data/landmarks"
 
 # 🔹 Función para cargar archivos de texto
 def load_text_files(directory):
@@ -36,7 +36,7 @@ def load_text_files(directory):
 # 🔹 Cargar solo data de landmarks
 documents = load_text_files(DATA_DIR)
 
-# 🔹 Optimización: dividir en chunks más pequeños
+# 🔹 Dividir en chunks más pequeños para optimizar embeddings
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=150, chunk_overlap=20)
 flattened_docs = [chunk for doc in documents for chunk in text_splitter.split_text(doc)]
 
@@ -45,13 +45,13 @@ BATCH_SIZE = 20
 vector_store = FAISS.from_texts(flattened_docs[:BATCH_SIZE], embeddings)
 retriever = vector_store.as_retriever()
 
-# 🔹 Prompt actualizado para evitar errores con RetrievalQA
+# 🔹 Prompt actualizado para `context`
 prompt_template = PromptTemplate(
     template="""
     You are an expert travel assistant for Puerto Rico.
-    Generate an itinerary for {days} days of travel based on the following information:
+    Generate an itinerary for {days} days of travel based on the following context:
     
-    {query}
+    {context}
     
     Example:
     User: "I have 3 days, I like nature and culture."
@@ -59,7 +59,7 @@ prompt_template = PromptTemplate(
     
     Now generate the best itinerary based on the given information.
     """,
-    input_variables=["days", "query"]
+    input_variables=["days", "context"]
 )
 
 # 🔹 Ajuste de RetrievalQA con el nuevo Prompt
@@ -88,8 +88,8 @@ days = st.number_input("How many days will you travel?", min_value=1, max_value=
 interest = st.text_input("Enter your travel interest (e.g., beaches, history, hiking):")
 
 if st.button("Get Itinerary"):
-    query = f"I have {days} days and I am interested in {interest}."
-    itinerary = qa_chain.invoke({"days": days, "query": query})  # 🔹 Se usa `.invoke()` en vez de `.run()`
+    context = f"I have {days} days and I am interested in {interest}."
+    itinerary = qa_chain.invoke({"days": days, "context": context})  # 🔹 Se usa `context` en vez de `query`
     
     st.write("### Suggested Itinerary:")
     st.write(itinerary)
