@@ -45,16 +45,13 @@ BATCH_SIZE = 20
 vector_store = FAISS.from_texts(flattened_docs[:BATCH_SIZE], embeddings)
 retriever = vector_store.as_retriever()
 
-# 🔹 Prompt actualizado (incluye `context`)
+# 🔹 Prompt actualizado con `query`
 prompt_template = PromptTemplate(
     template="""
     You are an expert travel assistant for Puerto Rico.
-    Generate an itinerary based on the following query and relevant context:
+    Generate an itinerary based on the following query:
 
     Query: {query}
-
-    Relevant Context:
-    {context}
 
     Example:
     User: "I have 3 days, I like nature and culture."
@@ -62,42 +59,8 @@ prompt_template = PromptTemplate(
     
     Now generate the best itinerary based on the given information.
     """,
-    input_variables=["query", "context"]
+    input_variables=["query"]
 )
 
-# 🔹 Ajuste de RetrievalQA con el nuevo Prompt
-qa_chain = RetrievalQA.from_chain_type(
-    llm=ChatOpenAI(model=LLM_MODEL),
-    retriever=retriever,
-    chain_type_kwargs={"prompt": prompt_template, "document_variable_name": "context"}
-)
-
-# 🔹 API del clima (WeatherAPI)
-def get_weather(location):
-    url = f"http://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={location}&aqi=no"
-    response = requests.get(url)
-    if response.status_code == 200:
-        data = response.json()
-        return f"{data['location']['name']}: {data['current']['temp_c']}°C, {data['current']['condition']['text']}"
-    return "Weather data unavailable."
-
-# 🔹 Interfaz en Streamlit
-st.title("Puerto Rico Travel Itinerary")
-
-# 🔹 Selección de días
-days = st.number_input("How many days will you travel?", min_value=1, max_value=14, value=3)
-
-# 🔹 Input de intereses del usuario
-interest = st.text_input("Enter your travel interest (e.g., beaches, history, hiking):")
-
-if st.button("Get Itinerary"):
-    query = f"I have {days} days and I am interested in {interest}."
-    itinerary = qa_chain.invoke({"query": query})  # 🔹 Solo pasamos `query`
-    
-    st.write("### Suggested Itinerary:")
-    st.write(itinerary)
-
-    # 🔹 Clima para el destino principal
-    st.write("### Weather Forecast:")
-    main_location = itinerary.split("\n")[0] if itinerary else "San Juan"
-    st.write(get_weather(main_location))
+# 🔹 Ajuste de RetrievalQA con `query` corregido
+q
