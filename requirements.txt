@@ -1,10 +1,11 @@
 streamlit
-openai
 requests
+openai
 langchain
-langchain-community
 faiss-cpu
 bs4
 geopy
-python-dotenv
-tiktoken
+datetime
+folium
+streamlit-folium
+pickle-mixin
