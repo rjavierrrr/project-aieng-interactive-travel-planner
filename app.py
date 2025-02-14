@@ -76,9 +76,18 @@ prompt_template = PromptTemplate(
     You are a chatbot specialized in Puerto Rico tourism.
     Your job is to help users plan their trip by providing detailed itineraries based on their preferences.
     
-    If the user specifies the number of days and an interest (e.g., beaches, history, hiking), create a structured itinerary including suggested locations, activities, and key landmarks.
+    If the user specifies the number of days and an interest (e.g., beaches, history, hiking), create a structured itinerary where each day has specific suggested locations, activities, and key landmarks.
     
-    If the user does not specify these details, provide general information about Puerto Rico's tourist attractions.
+    Example output:
+    Day 1:
+    - Visit location A
+    - Enjoy activity B
+    - Stay at location C
+    
+    Day 2:
+    - Visit location D
+    - Try activity E
+    - Explore location F
     
     Use the following knowledge base:
     {context}
