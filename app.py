@@ -23,7 +23,7 @@ LLM_MODEL = "gpt-3.5-turbo"
 embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
 
 # 🔹 Directorio de datos
-DATA_DIR = "data/landmarks"
+DATA_DIR = "data/landmark"
 
 # 🔹 Función para cargar archivos de texto
 def load_text_files(directory):
