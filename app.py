@@ -1,36 +1,48 @@
 import streamlit as st
 import requests
 import os
-import openai
 import pickle
-from langchain.embeddings import OpenAIEmbeddings
+import time
+import re
+import json
 from langchain.vectorstores import FAISS
 from langchain.llms import OpenAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from streamlit_folium import folium_static
+from sentence_transformers import SentenceTransformer
 import folium
-import json
 from bs4 import BeautifulSoup
 from geopy.geocoders import Nominatim
 from datetime import datetime
 
-# Load OpenAI API Key from GitHub Secrets
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Load API Keys from environment variables (GitHub Secrets)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+API_KEY = os.getenv("WEATHER_API_KEY")
 
-# Load embedding model (cheaper version)
-embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+# ✅ Change embeddings model to `bge-small-en`
+embedding_model = SentenceTransformer("BAAI/bge-small-en")
 
 # Load data from text files (excluding news)
 DATA_DIR = "data"
 landmarks, municipalities = [], []
 
+def clean_text(text):
+    """Cleans text by removing special characters, extra spaces, and short sentences."""
+    text = re.sub(r"\s+", " ", text)  # Remove extra spaces, new lines
+    text = re.sub(r"[^\w\s.,!?]", "", text)  # Remove special characters (except punctuation)
+    text = text.strip()
+    return text if len(text) > 30 else ""  # Remove very short texts
+
 def load_text_files(directory):
     texts = []
     for filename in os.listdir(directory):
         with open(os.path.join(directory, filename), "r", encoding="utf-8") as file:
-            texts.append(file.read())
+            content = file.read()
+            cleaned_text = clean_text(content)
+            if cleaned_text and cleaned_text not in texts:  # Remove duplicates
+                texts.append(cleaned_text)
     return texts
 
 if os.path.exists(f"{DATA_DIR}/landmarks"):
@@ -41,23 +53,26 @@ if os.path.exists(f"{DATA_DIR}/municipalities"):
 # Combine all texts for embedding
 documents = landmarks + municipalities
 
-# Split text into smaller chunks to avoid token limits
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=50)
+# Split text into smaller chunks to reduce token usage
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=256, chunk_overlap=20)
 split_documents = text_splitter.split_text(" ".join(documents))
 
-# Cache FAISS Vector Store to avoid recomputing embeddings every run
+# ✅ Change to SentenceTransformer embeddings
 VECTOR_STORE_PATH = "vector_store.pkl"
 if os.path.exists(VECTOR_STORE_PATH):
     with open(VECTOR_STORE_PATH, "rb") as f:
         vector_store = pickle.load(f)
 else:
-    vector_store = FAISS.from_texts(split_documents, embeddings)
+    print("Generating new embeddings... This may take time.")
+    embeddings = [embedding_model.encode(text) for text in split_documents]
+    vector_store = FAISS.from_embeddings(embeddings, split_documents)
     with open(VECTOR_STORE_PATH, "wb") as f:
         pickle.dump(vector_store, f)
+    print("Vector store saved successfully.")
 
 retriever = vector_store.as_retriever()
 
-# Define a custom prompt for travel assistant
+# Define a travel assistant prompt
 prompt_template = PromptTemplate(
     template="""
     You are a friendly and knowledgeable travel assistant specializing in Puerto Rico tourism. 
@@ -70,21 +85,23 @@ prompt_template = PromptTemplate(
 
 qa_chain = RetrievalQA.from_chain_type(llm=OpenAI(model_name="gpt-3.5-turbo", temperature=0.7), retriever=retriever, chain_type_kwargs={"prompt": prompt_template})
 
-# Weather API Key from GitHub Secrets
-API_KEY = os.getenv("WEATHER_API_KEY")
-
 def get_weather(location):
-    """Fetch weather data for a given location."""
+    """Fetch weather data with retry mechanism."""
     url = f"http://api.weatherapi.com/v1/current.json?key={API_KEY}&q={location}&aqi=no"
-    response = requests.get(url)
-    if response.status_code == 200:
-        return response.json()
+    
+    retry_attempts = 3
+    for attempt in range(retry_attempts):
+        response = requests.get(url)
+        if response.status_code == 200:
+            return response.json()
+        print(f"Weather API request failed. Retrying in {2**attempt} seconds...")
+        time.sleep(2 ** attempt)
+    
     return {"error": "Could not fetch weather data."}
 
 def recommend_locations(user_interest):
     """Finds locations based on user interest using LangChain retrieval."""
-    result = qa_chain.run(user_interest)
-    return result
+    return qa_chain.run(user_interest)
 
 def get_coordinates(location):
     """Gets latitude and longitude of a given location."""
