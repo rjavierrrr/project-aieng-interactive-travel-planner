@@ -7,8 +7,8 @@ from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
+from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
 from bs4 import BeautifulSoup
 from datetime import datetime
 
@@ -39,8 +39,11 @@ def load_cleaned_texts(directory, max_files=30):
         with open(os.path.join(directory, filename), "r", encoding="utf-8") as file:
             raw_html = file.read()
             soup = BeautifulSoup(raw_html, "html.parser")
-            text = soup.get_text().strip()
-            texts.extend(chunk_text(text))  # Dividir texto en fragmentos pequeños
+            for script in soup(["script", "style", "header", "footer", "nav", "aside"]):
+                script.extract()
+            text = soup.get_text(separator=" ").strip()
+            cleaned_text = " ".join(text.split())
+            texts.extend(chunk_text(cleaned_text))  # Dividir texto en fragmentos pequeños
     return texts
 
 # Cargar datos solo si el índice no existe
@@ -79,11 +82,11 @@ prompt_template = PromptTemplate(
     input_variables=["days", "query", "context"]
 )
 
-# Crear la cadena LLM con el prompt personalizado
-llm_chain = LLMChain(llm=ChatOpenAI(model=LLM_MODEL), prompt=prompt_template)
+# Cargar la cadena de combinación de documentos
+combine_documents_chain = load_qa_chain(llm=ChatOpenAI(model=LLM_MODEL), chain_type="stuff")
 
-# Crear la cadena de consulta con RetrievalQA
-qa_chain = RetrievalQA(llm_chain=llm_chain, retriever=retriever)
+# Crear la cadena de consulta con RetrievalQA correctamente
+qa_chain = RetrievalQA(retriever=retriever, combine_documents_chain=combine_documents_chain)
 
 # Obtener datos del clima
 def get_weather(location):
