@@ -9,5 +9,6 @@ folium
 beautifulsoup4
 geopy
 datetime
+sentence-transformers
 langchain-community
 tiktoken
