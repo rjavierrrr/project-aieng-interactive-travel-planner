@@ -29,12 +29,12 @@ def chunk_text(text, chunk_size=500):
     return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
 # Cargar solo los primeros 30 archivos y limpiar textos
-def load_cleaned_texts(directory):
+def load_cleaned_texts(directory, max_files=30):
     texts = []
     if not os.path.exists(directory):
         return texts
     
-    files = sorted(os.listdir(directory)) # Solo los primeros 30 archivos
+    files = sorted(os.listdir(directory))[:max_files]  # Solo los primeros 30 archivos
     for filename in files:
         with open(os.path.join(directory, filename), "r", encoding="utf-8") as file:
             raw_html = file.read()
@@ -49,7 +49,7 @@ def load_cleaned_texts(directory):
 # Cargar datos solo si el índice no existe
 VECTOR_DB_PATH = "vector_store/faiss_index"
 
-landmarks = load_cleaned_texts(DATA_DIR)
+landmarks = load_cleaned_texts(DATA_DIR, max_files=30)
 
 # Evitar re-procesamiento si ya existe un índice
 def get_vector_store():
@@ -93,7 +93,16 @@ def get_weather(location):
     url = f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={location}&days=3"
     response = requests.get(url)
     if response.status_code == 200:
-        return response.json()
+        weather = response.json()
+        forecast = weather.get("forecast", {}).get("forecastday", [])[0]
+        if forecast:
+            return {
+                "location": weather.get("location", {}).get("name", "Unknown"),
+                "temperature": forecast.get("day", {}).get("avgtemp_c", "N/A"),
+                "condition": forecast.get("day", {}).get("condition", {}).get("text", "N/A"),
+                "humidity": forecast.get("day", {}).get("avghumidity", "N/A"),
+                "wind": forecast.get("day", {}).get("maxwind_kph", "N/A")
+            }
     return {"error": "Could not fetch weather data."}
 
 # Interfaz con Streamlit
