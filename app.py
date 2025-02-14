@@ -29,12 +29,12 @@ def chunk_text(text, chunk_size=500):
     return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
 # Cargar solo los primeros 30 archivos y limpiar textos
-def load_cleaned_texts(directory, max_files=30):
+def load_cleaned_texts(directory):
     texts = []
     if not os.path.exists(directory):
         return texts
     
-    files = sorted(os.listdir(directory))[:max_files]  # Solo los primeros 30 archivos
+    files = sorted(os.listdir(directory)) # Solo los primeros 30 archivos
     for filename in files:
         with open(os.path.join(directory, filename), "r", encoding="utf-8") as file:
             raw_html = file.read()
