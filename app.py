@@ -45,13 +45,13 @@ BATCH_SIZE = 20
 vector_store = FAISS.from_texts(flattened_docs[:BATCH_SIZE], embeddings)
 retriever = vector_store.as_retriever()
 
-# 🔹 Prompt actualizado para `context`
+# 🔹 Prompt actualizado para `query`
 prompt_template = PromptTemplate(
     template="""
     You are an expert travel assistant for Puerto Rico.
-    Generate an itinerary for {days} days of travel based on the following context:
+    Generate an itinerary for {days} days of travel based on the following query:
     
-    {context}
+    {query}
     
     Example:
     User: "I have 3 days, I like nature and culture."
@@ -59,7 +59,7 @@ prompt_template = PromptTemplate(
     
     Now generate the best itinerary based on the given information.
     """,
-    input_variables=["days", "context"]
+    input_variables=["days", "query"]
 )
 
 # 🔹 Ajuste de RetrievalQA con el nuevo Prompt
@@ -88,8 +88,8 @@ days = st.number_input("How many days will you travel?", min_value=1, max_value=
 interest = st.text_input("Enter your travel interest (e.g., beaches, history, hiking):")
 
 if st.button("Get Itinerary"):
-    context = f"I have {days} days and I am interested in {interest}."
-    itinerary = qa_chain.invoke({"days": days, "context": context})  # 🔹 Se usa `context` en vez de `query`
+    query = f"I have {days} days and I am interested in {interest}."
+    itinerary = qa_chain.invoke({"days": days, "query": query})  # 🔹 Se usa `query` en vez de `context`
     
     st.write("### Suggested Itinerary:")
     st.write(itinerary)
