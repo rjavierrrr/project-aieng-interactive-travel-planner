@@ -26,7 +26,12 @@ BASE_DATA_DIR = "data"
 LANDMARKS_DIR = os.path.join(BASE_DATA_DIR, "landmark")
 MUNICIPALITIES_DIR = os.path.join(BASE_DATA_DIR, "municipalities")
 
-# Función para limpiar y cargar los textos de los landmarks y municipios
+# Función para dividir texto en fragmentos pequeños
+def chunk_text(text, chunk_size=500):
+    words = text.split()
+    return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
+
+# Cargar y limpiar textos de múltiples directorios
 def load_cleaned_texts(directories):
     texts = []
     for directory in directories:
@@ -41,11 +46,11 @@ def load_cleaned_texts(directories):
                     script.extract()
                 text = soup.get_text(separator=" ").strip()
                 cleaned_text = " ".join(text.split())
-                texts.append(cleaned_text)
+                texts.extend(chunk_text(cleaned_text))
     return texts
 
 # Cargar datos de ambas carpetas
-locations_data = load_cleaned_texts([LANDMARKS_DIR, MUNICIPALITIES_DIR])
+landmarks = load_cleaned_texts([LANDMARKS_DIR, MUNICIPALITIES_DIR])
 
 # Cargar datos solo si el índice no existe
 VECTOR_DB_PATH = "vector_store/faiss_index"
@@ -54,38 +59,39 @@ def get_vector_store():
     if os.path.exists(VECTOR_DB_PATH):
         return FAISS.load_local(VECTOR_DB_PATH, OpenAIEmbeddings(model=EMBEDDING_MODEL), allow_dangerous_deserialization=True)
     else:
-        if not locations_data:
+        if not landmarks:
             st.error("No landmark or municipality data found. Please check your data directory.")
             st.stop()
         embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
-        vector_store = FAISS.from_texts([json.dumps(loc) for loc in locations_data], embeddings)
+        vector_store = FAISS.from_texts(landmarks, embeddings)
         vector_store.save_local(VECTOR_DB_PATH)
         return vector_store
 
 vector_store = get_vector_store()
 retriever = vector_store.as_retriever()
 
-# Definir prompt para el chatbot con estructura de itinerario
+# Definir prompt para el chatbot con 'context'
 prompt_template = PromptTemplate(
     template="""
     You are a chatbot specialized in Puerto Rico tourism.
     Your job is to help users plan their trip by providing detailed itineraries based on their preferences.
-
-    The itinerary **MUST** follow this exact format:
-
+    
+    If the user specifies the number of days and an interest (e.g., beaches, history, hiking), create a structured itinerary where each day has specific suggested locations, activities, and key landmarks.
+    
+    Example output:
     Day 1:
     - Visit location A
     - Enjoy activity B
     - Stay at location C
-
+    
     Day 2:
     - Visit location D
     - Try activity E
     - Explore location F
-
+    
     Use the following knowledge base:
     {context}
-
+    
     User: I am traveling for {days} days and I am interested in {interest}.
     Assistant:
     """,
@@ -95,22 +101,27 @@ prompt_template = PromptTemplate(
 combine_documents_chain = load_qa_chain(llm=ChatOpenAI(model=LLM_MODEL), chain_type="stuff")
 qa_chain = RetrievalQA(retriever=retriever, combine_documents_chain=combine_documents_chain)
 
-# Obtener datos del clima con WeatherAPI
-def find_weather_forecast(date, location):
-    url = f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={location}&days=3"
-    response = requests.get(url)
-    if response.status_code == 200:
-        weather_data = response.json()
-        for day in weather_data.get("forecast", {}).get("forecastday", []):
-            if date == day["date"]:
-                return {
-                    "date": date,
-                    "temperature": day["day"]["avgtemp_c"],
-                    "condition": day["day"]["condition"]["text"],
-                    "humidity": day["day"]["avghumidity"],
-                    "wind": day["day"]["maxwind_kph"]
-                }
-    return {"error": "Weather data not available"}
+# Obtener datos del clima
+def get_weather(locations, days):
+    weather_reports = {}
+    for location in locations:
+        url = f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={location}&days={days}"
+        response = requests.get(url)
+        if response.status_code == 200:
+            weather = response.json()
+            forecast = weather.get("forecast", {}).get("forecastday", [])
+            if forecast:
+                forecasts = []
+                for day in forecast:
+                    forecasts.append({
+                        "date": day.get("date", "N/A"),
+                        "temperature": day.get("day", {}).get("avgtemp_c", "N/A"),
+                        "condition": day.get("day", {}).get("condition", {}).get("text", "N/A"),
+                        "humidity": day.get("day", {}).get("avghumidity", "N/A"),
+                        "wind": day.get("day", {}).get("maxwind_kph", "N/A")
+                    })
+                weather_reports[location] = forecasts
+    return weather_reports
 
 # Interfaz con Streamlit
 st.title("Puerto Rico Travel Chatbot")
@@ -128,6 +139,11 @@ if start_date and end_date and interest:
     response = qa_chain.invoke({"query": query, "days": num_days, "interest": interest})
     itinerary = response.get("result", "I'm not sure how to create an itinerary for that.")
     st.session_state["messages"].append({"role": "assistant", "content": itinerary})
+    
+    # Extraer destinos del itinerario y mostrar clima
+    destinations = re.findall(r"\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b", itinerary)
+    weather_report = get_weather(destinations, num_days)
+    st.session_state["messages"].append({"role": "assistant", "content": f"Weather forecast for your trip: {json.dumps(weather_report, indent=2)}"})
 
 for message in st.session_state["messages"]:
     with st.chat_message(message["role"]):
