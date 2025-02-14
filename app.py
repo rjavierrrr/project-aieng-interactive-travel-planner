@@ -1,31 +1,31 @@
+import os
 import streamlit as st
 import openai
-import os
-import json
-import time
-import pickle
-from dotenv import load_dotenv
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+import requests
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores import FAISS
-from langchain.llms import OpenAI
+from langchain.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-from geopy.geocoders import Nominatim
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from dotenv import load_dotenv
 
-# 📌 Cargar variables de entorno desde `.env`
+# 🔹 Cargar variables de entorno desde .env
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
-# 📌 Configurar modelos más económicos
-EMBEDDING_MODEL = "text-embedding-ada-002"
-LLM_MODEL = "gpt-3.5-turbo"
-VECTOR_STORE_PATH = "vector_store.pkl"
+# 🔹 Configuración de modelos
+EMBEDDING_MODEL = "text-embedding-3-small"  # Cambia a "text-embedding-3-large" si necesitas más precisión
+LLM_MODEL = "gpt-3.5-turbo"  # Cambia a "gpt-4-turbo" si el presupuesto lo permite
 
-# 📌 Leer solo la data de `landmarks`
-DATA_DIR = "data"
-landmarks = []
+# 🔹 Cargar embeddings
+embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
 
+# 🔹 Directorio de datos
+DATA_DIR = "data/landmarks"
+
+# 🔹 Función para cargar archivos de texto
 def load_text_files(directory):
     texts = []
     for filename in os.listdir(directory):
@@ -33,84 +33,65 @@ def load_text_files(directory):
             texts.append(file.read())
     return texts
 
-if os.path.exists(f"{DATA_DIR}/landmarks"):
-    landmarks = load_text_files(f"{DATA_DIR}/landmarks")
+# 🔹 Cargar datos de landmarks
+documents = load_text_files(DATA_DIR)
 
-# 📌 Fragmentación (`chunking`) para evitar `RateLimitError`
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=256, chunk_overlap=20)
-split_docs = [text_splitter.split_text(doc) for doc in landmarks]
-flattened_docs = [chunk for sublist in split_docs for chunk in sublist]
+# 🔹 Optimización: dividir en chunks más pequeños
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=150, chunk_overlap=20)
+flattened_docs = [chunk for doc in documents for chunk in text_splitter.split_text(doc)]
 
-# 📌 Cargar o crear FAISS Vector Store con `batching`
-def save_vector_store(vector_store):
-    with open(VECTOR_STORE_PATH, "wb") as f:
-        pickle.dump(vector_store, f)
-
-def load_vector_store():
-    if os.path.exists(VECTOR_STORE_PATH):
-        with open(VECTOR_STORE_PATH, "rb") as f:
-            return pickle.load(f)
-    return None
-
-vector_store = load_vector_store()
-if vector_store is None:
-    batch_size = 50  # Evitar exceder tokens por minuto (TPM)
-    vector_store = FAISS()
-    embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
-
-    for i in range(0, len(flattened_docs), batch_size):
-        batch = flattened_docs[i:i+batch_size]
-        try:
-            vector_store.add_texts(batch, embeddings)
-        except openai.error.RateLimitError:
-            print("Rate limit reached, waiting 5 seconds...")
-            time.sleep(5)
-            vector_store.add_texts(batch, embeddings)
-
-    save_vector_store(vector_store)
-
+# 🔹 Evitar Rate Limit: procesar embeddings en lotes
+BATCH_SIZE = 20
+vector_store = FAISS.from_texts(flattened_docs[:BATCH_SIZE], embeddings)
 retriever = vector_store.as_retriever()
 
-# 📌 Prompt optimizado para turismo
+# 🔹 Configuración del chatbot
 prompt_template = PromptTemplate(
     template="""
-    You are a helpful travel assistant specialized in Puerto Rico tourism.
-    Your task is to generate a detailed itinerary based on the user's requested number of travel days.
-
+    You are an expert travel assistant for Puerto Rico.
+    Generate an itinerary based on {days} days of travel.
+    
     Example:
-    User: "I have 3 days to explore historical landmarks in Puerto Rico."
-    Assistant: "Day 1: Visit El Morro and Old San Juan... Day 2: Explore Ponce and its colonial architecture..."
-
-    Now, generate an itinerary based on the user's input:
+    User: "I have 3 days, I like nature and culture."
+    Assistant: "Day 1: Visit El Yunque Rainforest..."
+    
+    Now generate the best itinerary:
     {question}
     """,
-    input_variables=["question"]
+    input_variables=["days", "question"]
 )
 
-qa_chain = RetrievalQA.from_chain_type(llm=OpenAI(model_name=LLM_MODEL), retriever=retriever, chain_type_kwargs={"prompt": prompt_template})
+qa_chain = RetrievalQA.from_chain_type(
+    llm=ChatOpenAI(model=LLM_MODEL),
+    retriever=retriever,
+    chain_type_kwargs={"prompt": prompt_template}
+)
 
-# 📌 Obtener coordenadas de un lugar
-def get_coordinates(location):
-    geolocator = Nominatim(user_agent="geoapiExercises")
-    loc = geolocator.geocode(location)
-    return (loc.latitude, loc.longitude) if loc else (None, None)
+# 🔹 API del clima (WeatherAPI)
+def get_weather(location):
+    url = f"http://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={location}&aqi=no"
+    response = requests.get(url)
+    if response.status_code == 200:
+        data = response.json()
+        return f"{data['location']['name']}: {data['current']['temp_c']}°C, {data['current']['condition']['text']}"
+    return "Weather data unavailable."
 
-# 📌 Generar itinerario con reintentos
-def generate_itinerary(user_request):
-    try:
-        return qa_chain.run(user_request)
-    except openai.error.RateLimitError:
-        time.sleep(5)
-        return qa_chain.run(user_request)
+# 🔹 Interfaz en Streamlit
+st.title("Puerto Rico Travel Itinerary")
 
-# 📌 Interfaz Streamlit
-st.title("📍 Puerto Rico Travel Itinerary Planner")
+# 🔹 Selección de días
+days = st.number_input("How many days will you travel?", min_value=1, max_value=14, value=3)
 
-days = st.number_input("How many days will you be traveling?", min_value=1, max_value=14, step=1)
-interest = st.text_input("What are your interests? (e.g., beaches, history, hiking)")
+# 🔹 Input de intereses del usuario
+interest = st.text_input("Enter your travel interest (e.g., beaches, history, hiking):")
 
-if st.button("Generate Itinerary"):
-    user_query = f"I have {days} days to explore landmarks in Puerto Rico."
-    itinerary = generate_itinerary(user_query)
-    st.write("📌 Suggested Itinerary:")
+if st.button("Get Itinerary"):
+    question = f"I have {days} days and I am interested in {interest}."
+    itinerary = qa_chain.run({"days": days, "question": question})
+    st.write("### Suggested Itinerary:")
     st.write(itinerary)
+
+    # 🔹 Clima para el destino principal
+    st.write("### Weather Forecast:")
+    main_location = itinerary.split("\n")[0] if itinerary else "San Juan"
+    st.write(get_weather(main_location))
