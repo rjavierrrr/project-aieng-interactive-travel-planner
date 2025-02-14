@@ -97,13 +97,79 @@ combine_documents_chain = load_qa_chain(llm=ChatOpenAI(model=LLM_MODEL), chain_t
 qa_chain = RetrievalQA(retriever=retriever, combine_documents_chain=combine_documents_chain)
 
 # Obtener datos del clima
-def get_weather(location):
-    url = f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={location}&days=3"
+def get_weather(locations, days):
+    weather_reports = {}
+    for location in locations:
+        url = f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={location}&days={days}"
+        response = requests.get(url)
+        if response.status_code == 200:
+            weather = response.json()
+            forecast = weather.get("forecast", {}).get("forecastday", [])
+            if forecast:
+                forecasts = []
+                for day in forecast:
+                    forecasts.append({
+                        "date": day.get("date", "N/A"),
+                        "temperature": day.get("day", {}).get("avgtemp_c", "N/A"),
+                        "condition": day.get("day", {}).get("condition", {}).get("text", "N/A"),
+                        "humidity": day.get("day", {}).get("avghumidity", "N/A"),
+                        "wind": day.get("day", {}).get("maxwind_kph", "N/A")
+                    })
+                weather_reports[location] = forecasts
+    return weather_reports
+    weather_reports = {}
+    for location in locations:
+        url = f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={location}&days={days}"
+        response = requests.get(url)
+        if response.status_code == 200:
+            weather = response.json()
+            forecast = weather.get("forecast", {}).get("forecastday", [])
+            if forecast:
+                forecasts = []
+                for day in forecast:
+                    forecasts.append({
+                        "date": day.get("date", "N/A"),
+                        "temperature": day.get("day", {}).get("avgtemp_c", "N/A"),
+                        "condition": day.get("day", {}).get("condition", {}).get("text", "N/A"),
+                        "humidity": day.get("day", {}).get("avghumidity", "N/A"),
+                        "wind": day.get("day", {}).get("maxwind_kph", "N/A")
+                    })
+                weather_reports[location] = forecasts
+    return weather_reports
+    weather_reports = {}
+    for location in locations:
+        url = f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={location}&days={days}"
+        response = requests.get(url)
+        if response.status_code == 200:
+            weather = response.json()
+            forecast = weather.get("forecast", {}).get("forecastday", [])
+            if forecast:
+                forecasts = []
+                for day in forecast:
+                    forecasts.append({
+                        "date": day.get("date", "N/A"),
+                        "temperature": day.get("day", {}).get("avgtemp_c", "N/A"),
+                        "condition": day.get("day", {}).get("condition", {}).get("text", "N/A"),
+                        "humidity": day.get("day", {}).get("avghumidity", "N/A"),
+                        "wind": day.get("day", {}).get("maxwind_kph", "N/A")
+                    })
+                weather_reports[location] = forecasts
+    return weather_reports
     response = requests.get(url)
     if response.status_code == 200:
         weather = response.json()
-        forecast = weather.get("forecast", {}).get("forecastday", [])[0]
+        forecast = weather.get("forecast", {}).get("forecastday", [])
         if forecast:
+            forecasts = []
+            for day in forecast:
+                forecasts.append({
+                    "date": day.get("date", "N/A"),
+                    "temperature": day.get("day", {}).get("avgtemp_c", "N/A"),
+                    "condition": day.get("day", {}).get("condition", {}).get("text", "N/A"),
+                    "humidity": day.get("day", {}).get("avghumidity", "N/A"),
+                    "wind": day.get("day", {}).get("maxwind_kph", "N/A")
+                })
+            return {"location": weather.get("location", {}).get("name", "Unknown"), "forecast": forecasts}
             return {
                 "location": weather.get("location", {}).get("name", "Unknown"),
                 "temperature": forecast.get("day", {}).get("avgtemp_c", "N/A"),
