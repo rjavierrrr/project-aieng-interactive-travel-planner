@@ -45,7 +45,7 @@ BATCH_SIZE = 20
 vector_store = FAISS.from_texts(flattened_docs[:BATCH_SIZE], embeddings)
 retriever = vector_store.as_retriever()
 
-# 🔹 Prompt actualizado con `query`
+# 🔹 Prompt corregido (solo usa `query`)
 prompt_template = PromptTemplate(
     template="""
     You are an expert travel assistant for Puerto Rico.
@@ -62,11 +62,11 @@ prompt_template = PromptTemplate(
     input_variables=["query"]
 )
 
-# 🔹 Ajuste de RetrievalQA con `query` corregido
+# 🔹 Configuración corregida de RetrievalQA
 qa_chain = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(model=LLM_MODEL),
     retriever=retriever,
-    chain_type_kwargs={"prompt": prompt_template}
+    chain_type_kwargs={"prompt": prompt_template}  # Eliminamos document_variable_name
 )
 
 # 🔹 API del clima (WeatherAPI)
@@ -89,12 +89,17 @@ interest = st.text_input("Enter your travel interest (e.g., beaches, history, hi
 
 if st.button("Get Itinerary"):
     query = f"I have {days} days and I am interested in {interest}."
-    itinerary = qa_chain.invoke({"query": query})  # ✅ Solo pasamos `query`
     
-    st.write("### Suggested Itinerary:")
-    st.write(itinerary)
+    try:
+        itinerary = qa_chain.invoke({"query": query})  # ✅ Solo pasamos `query`
+        
+        st.write("### Suggested Itinerary:")
+        st.write(itinerary)
 
-    # 🔹 Clima para el destino principal
-    st.write("### Weather Forecast:")
-    main_location = itinerary.split("\n")[0] if itinerary else "San Juan"
-    st.write(get_weather(main_location))
+        # 🔹 Clima para el destino principal
+        st.write("### Weather Forecast:")
+        main_location = itinerary.split("\n")[0] if itinerary else "San Juan"
+        st.write(get_weather(main_location))
+
+    except Exception as e:
+        st.error(f"Error generating itinerary: {str(e)}")
