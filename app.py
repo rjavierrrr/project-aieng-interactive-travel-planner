@@ -20,7 +20,7 @@ LLM_MODEL = "gpt-3.5-turbo"
 EMBEDDING_MODEL = "text-embedding-ada-002"
 
 # Directorio de datos
-DATA_DIR = "data/landmark"
+DATA_DIR = "data/landmarks"
 
 # Función para dividir texto en fragmentos pequeños
 def chunk_text(text, chunk_size=500):
@@ -67,16 +67,17 @@ prompt_template = PromptTemplate(
     User wants to visit places for {days} days.
     Suggest a detailed itinerary based on available landmarks.
     
-    {query}
+    Query: {query}
     """,
     input_variables=["days", "query"]
 )
 
-# Crear la cadena de consulta
+# Crear la cadena de consulta con RetrievalQA
 qa_chain = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(model=LLM_MODEL),
     retriever=retriever,
-    chain_type_kwargs={"prompt": prompt_template}
+    chain_type_kwargs={"prompt": prompt_template},
+    input_key="query",  # 🔹 Corregido para que coincida con la entrada esperada
 )
 
 # Obtener datos del clima
@@ -96,7 +97,7 @@ interest = st.text_input("Enter your travel interest (e.g., beaches, history, hi
 
 if st.button("Get Itinerary"):
     query = f"I am interested in {interest} and have {days} days."
-    itinerary = qa_chain.invoke({"days": days, "query": query})
+    itinerary = qa_chain.invoke({"query": query})  # 🔹 Ahora pasamos `query`, que es lo que espera
 
     st.write("### Suggested Itinerary:")
     st.write(itinerary)
