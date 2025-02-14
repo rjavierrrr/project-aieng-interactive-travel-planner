@@ -143,7 +143,7 @@ if start_date and end_date and interest:
     # Extraer destinos del itinerario y mostrar clima
     destinations = re.findall(r"\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b", itinerary)
     weather_report = get_weather(destinations, num_days)
-    formatted_weather = "".join([f"### {location}" + "".join([f"- **{day['date']}**: {day['temperature']}°C, {day['condition']}, Humidity: {day['humidity']}%, Wind: {day['wind']} km/h" for day in details]) for location, details in weather_report.items()])
+    formatted_weather = "".join([f"### {location}" + "".join([f"- **{day['date']}**: {day['temperature']}°C, {day['condition']}, Humidity: {day['humidity']}%, Wind: {day['wind']} km/h" for day in details]) for location, details in weather_report.items()]).join([f"### {location}" + "".join([f"- **{day['date']}**: {day['temperature']}°C, {day['condition']}, Humidity: {day['humidity']}%, Wind: {day['wind']} km/h" for day in details]) for location, details in weather_report.items()])
 
 st.session_state["messages"].append({"role": "assistant", "content": formatted_weather})
 
