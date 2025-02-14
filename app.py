@@ -24,7 +24,6 @@ EMBEDDING_MODEL = "text-embedding-ada-002"
 # Data directories
 BASE_DATA_DIR = "data"
 LANDMARKS_DIR = os.path.join(BASE_DATA_DIR, "landmark")
-MUNICIPALITIES_DIR = os.path.join(BASE_DATA_DIR, "municipalities")
 
 # Function to split text into chunks
 def chunk_text(text, chunk_size=500):
@@ -32,11 +31,9 @@ def chunk_text(text, chunk_size=500):
     return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
 # Load and clean texts from directories
-def load_cleaned_texts(directories):
+def load_cleaned_texts(directory):
     texts = []
-    for directory in directories:
-        if not os.path.exists(directory):
-            continue
+    if os.path.exists(directory):
         files = sorted(os.listdir(directory))
         for filename in files:
             with open(os.path.join(directory, filename), "r", encoding="utf-8") as file:
@@ -50,7 +47,7 @@ def load_cleaned_texts(directories):
     return texts
 
 # Load data
-landmarks = load_cleaned_texts([LANDMARKS_DIR, MUNICIPALITIES_DIR])
+landmarks = load_cleaned_texts(LANDMARKS_DIR)
 
 # Vector database path
 VECTOR_DB_PATH = "vector_store/faiss_index"
@@ -60,7 +57,7 @@ def get_vector_store():
         return FAISS.load_local(VECTOR_DB_PATH, OpenAIEmbeddings(model=EMBEDDING_MODEL), allow_dangerous_deserialization=True)
     else:
         if not landmarks:
-            st.error("No landmark or municipality data found. Please check your data directory.")
+            st.error("No landmark data found. Please check your data directory.")
             st.stop()
         embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
         vector_store = FAISS.from_texts(landmarks, embeddings)
