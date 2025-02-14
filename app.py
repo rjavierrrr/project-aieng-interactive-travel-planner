@@ -23,8 +23,8 @@ EMBEDDING_MODEL = "text-embedding-ada-002"
 
 # Directorio de datos
 BASE_DATA_DIR = "data"
-LANDMARK_DIR = os.path.join(BASE_DATA_DIR, "landmark")
-MUNICIPALITIES_DIR = os.path.join(BASE_DATA_DIR, "municipalities")
+LANDMARKS_DIR = os.path.join(BASE_DATA_DIR, "landmarks")
+MUNICIPIOS_DIR = os.path.join(BASE_DATA_DIR, "municipios")
 
 # Función para dividir texto en fragmentos pequeños
 def chunk_text(text, chunk_size=500):
@@ -32,12 +32,12 @@ def chunk_text(text, chunk_size=500):
     return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
 # Cargar y limpiar textos de múltiples directorios
-def load_cleaned_texts(directories, max_files=30):
+def load_cleaned_texts(directories):
     texts = []
     for directory in directories:
         if not os.path.exists(directory):
             continue
-        files = sorted(os.listdir(directory))[:max_files]  # Solo los primeros 30 archivos por directorio
+        files = sorted(os.listdir(directory))  # Solo los primeros 30 archivos por directorio
         for filename in files:
             with open(os.path.join(directory, filename), "r", encoding="utf-8") as file:
                 raw_html = file.read()
@@ -50,7 +50,7 @@ def load_cleaned_texts(directories, max_files=30):
     return texts
 
 # Cargar datos de ambas carpetas
-landmarks = load_cleaned_texts([LANDMARK_DIR, MUNICIPALITIES_DIR], max_files=30)
+landmarks = load_cleaned_texts([LANDMARKS_DIR, MUNICIPIOS_DIR])
 
 # Cargar datos solo si el índice no existe
 VECTOR_DB_PATH = "vector_store/faiss_index"
@@ -74,16 +74,15 @@ retriever = vector_store.as_retriever()
 # Definir prompt para el chatbot con 'context'
 prompt_template = PromptTemplate(
     template="""
-    You are a travel assistant specialized in Puerto Rico tourism.
-    The user wants to visit places for {days} days.
-    Suggest a detailed itinerary based on available landmarks and municipalities.
-    
-    Based on the following information:
+    You are a chatbot specialized in Puerto Rico tourism.
+    Answer the user's questions about travel destinations, landmarks, and activities in Puerto Rico.
+    Use the following knowledge base:
     {context}
     
-    Question: {query}
+    User: {query}
+    Assistant:
     """,
-    input_variables=["days", "query", "context"]
+    input_variables=["query", "context"]
 )
 
 # Cargar la cadena de combinación de documentos
@@ -109,31 +108,34 @@ def get_weather(location):
             }
     return {"error": "Could not fetch weather data."}
 
-# Extraer todas las ubicaciones del itinerario
-def extract_valid_locations(itinerary_text):
-    puerto_rico_places = [
-        "Adjuntas", "Aguada", "Aguadilla", "Aguas Buenas", "Aibonito", "Añasco", "Arecibo", "Arroyo", "Barceloneta", "Barranquitas", "Bayamón", "Cabo Rojo", "Caguas", "Camuy", "Canóvanas", "Carolina", "Cataño", "Cayey", "Ceiba", "Ciales", "Cidra", "Coamo", "Comerío", "Corozal", "Culebra", "Dorado", "Fajardo", "Florida", "Guánica", "Guayama", "Guayanilla", "Guaynabo", "Gurabo", "Hatillo", "Hormigueros", "Humacao", "Isabela", "Jayuya", "Juana Díaz", "Juncos", "Lajas", "Lares", "Las Marías", "Las Piedras", "Loíza", "Luquillo", "Manatí", "Maricao", "Maunabo", "Mayagüez", "Moca", "Morovis", "Naguabo", "Naranjito", "Orocovis", "Patillas", "Peñuelas", "Ponce", "Quebradillas", "Rincón", "Río Grande", "Sabana Grande", "Salinas", "San Germán", "San Juan", "San Lorenzo", "San Sebastián", "Santa Isabel", "Toa Alta", "Toa Baja", "Trujillo Alto", "Utuado", "Vega Alta", "Vega Baja", "Vieques", "Villalba", "Yabucoa", "Yauco"
-    ]
-    found_locations = [place for place in puerto_rico_places if place.lower() in itinerary_text.lower()]
-    return found_locations if found_locations else ["San Juan"]
-
 # Interfaz con Streamlit
-st.title("Puerto Rico Travel Planner")
+st.title("Puerto Rico Travel Chatbot")
+
+# Inicializar sesión del chat
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
+
+# Mostrar mensajes previos
+for message in st.session_state["messages"]:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
 # Entrada del usuario
-days = st.number_input("How many days will you travel?", min_value=1, max_value=30, step=1)
-interest = st.text_input("Enter your travel interest (e.g., beaches, history, hiking):")
+user_input = st.chat_input("Ask me about travel destinations in Puerto Rico...")
 
-if st.button("Get Itinerary"):
-    query = f"I am interested in {interest} and have {days} days."
-    itinerary = qa_chain.invoke({"query": query, "days": days})
+if user_input:
+    # Agregar entrada del usuario al chat
+    st.session_state["messages"].append({"role": "user", "content": user_input})
+    with st.chat_message("user"):
+        st.markdown(user_input)
     
-    if "result" in itinerary:
-        st.write("### Suggested Itinerary:")
-        st.write(itinerary["result"])
-        st.write("### Weather Forecast:")
-        locations = extract_valid_locations(itinerary["result"])
-        weather_reports = {loc: get_weather(loc) for loc in locations}
-        st.json(weather_reports)
-    else:
-        st.error("No itinerary could be generated. Please try again with different inputs.")
+    # Obtener respuesta del chatbot
+    response = qa_chain.invoke({"query": user_input})
+    
+    # Mostrar respuesta del chatbot
+    bot_response = response.get("result", "I'm not sure how to answer that. Try asking something else!")
+    with st.chat_message("assistant"):
+        st.markdown(bot_response)
+    
+    # Agregar respuesta del chatbot al historial
+    st.session_state["messages"].append({"role": "assistant", "content": bot_response})
