@@ -7,3 +7,4 @@ faiss-cpu
 bs4
 geopy
 python-dotenv
+tiktoken
