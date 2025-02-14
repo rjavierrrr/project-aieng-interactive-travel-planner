@@ -1,76 +1,48 @@
-import streamlit as st
-import os
-import openai
-import requests
-import json
-import re
-from langchain_community.embeddings import OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_community.chat_models import ChatOpenAI
-from langchain.chains import RetrievalQA
-from langchain.chains.question_answering import load_qa_chain
-from langchain.prompts import PromptTemplate
-from bs4 import BeautifulSoup
-from datetime import datetime
+# Función para obtener clima usando WeatherAPI
 
-# Cargar API Keys desde variables de entorno
-openai.api_key = os.getenv("OPENAI_API_KEY")
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
-
-# Definir modelo optimizado
-LLM_MODEL = "gpt-3.5-turbo"
-EMBEDDING_MODEL = "text-embedding-ada-002"
-
-# Directorio de datos
-BASE_DATA_DIR = "data"
-LANDMARKS_DIR = os.path.join(BASE_DATA_DIR, "landmark")
-MUNICIPALITIES_DIR = os.path.join(BASE_DATA_DIR, "municipalities")
-
-# Obtener coordenadas usando OpenStreetMap
-def get_coordinates(location):
-    url = f"https://nominatim.openstreetmap.org/search?q={location}&format=json&limit=1"
-    response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+def find_weather_forecast(date, location):
+    url = f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={location}&days=3"
+    response = requests.get(url)
     if response.status_code == 200:
-        data = response.json()
-        if data:
-            return {"latitude": data[0]["lat"], "longitude": data[0]["lon"]}
-    return {"latitude": "N/A", "longitude": "N/A"}
+        weather_data = response.json()
+        for day in weather_data.get("forecast", {}).get("forecastday", []):
+            if date == day["date"]:
+                return {
+                    "date": date,
+                    "temperature": day["day"]["avgtemp_c"],
+                    "condition": day["day"]["condition"]["text"],
+                    "humidity": day["day"]["avghumidity"],
+                    "wind": day["day"]["maxwind_kph"]
+                }
+    return {"error": "Weather data not available"}
 
-# Función para dividir texto en fragmentos pequeños
-def chunk_text(text, chunk_size=500):
-    words = text.split()
-    return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
+# Función para clasificar lugares recomendados
+def rank_appropriate_locations(user_prompt):
+    response = qa_chain.invoke({"query": user_prompt})
+    return response.get("result", "No suitable locations found.")
 
-# Generar resumen automático de lugares
-def generate_summary(text):
-    prompt = f"Summarize the following tourist location information in two sentences: {text}"
-    chat_model = ChatOpenAI(model=LLM_MODEL)
-    response = chat_model.invoke(prompt)
-    return response if response else "No summary available."
+# Función para obtener información sobre una ubicación específica
+def find_info_on_location(user_prompt, location):
+    query = f"{user_prompt} about {location}"
+    response = qa_chain.invoke({"query": query})
+    return response.get("result", "No information available for this location.")
 
-# Cargar y limpiar textos de múltiples directorios
-def load_cleaned_texts(directories):
-    locations_data = []
-    for directory in directories:
-        if not os.path.exists(directory):
-            continue
-        files = sorted(os.listdir(directory))
-        for filename in files:
-            with open(os.path.join(directory, filename), "r", encoding="utf-8") as file:
-                raw_html = file.read()
-                soup = BeautifulSoup(raw_html, "html.parser")
-                for script in soup(["script", "style", "header", "footer", "nav", "aside"]):
-                    script.extract()
-                text = soup.get_text(separator=" ").strip()
-                cleaned_text = " ".join(text.split())
-                summary = generate_summary(cleaned_text)
-                coordinates = get_coordinates(filename.replace(".txt", ""))
-                locations_data.append({
-                    "name": filename.replace(".txt", ""),
-                    "summary": summary,
-                    "coordinates": coordinates
-                })
-    return locations_data
+# Función para agregar una ubicación a la lista de lugares a visitar
+def add_location_to_visit_list(visit_list, location):
+    if location not in visit_list:
+        visit_list.append(location)
+    return visit_list
+
+# Función para calcular la distancia entre un lugar y la lista de ubicaciones seleccionadas
+def compute_distance_to_list(location_list, new_location):
+    distances = []
+    for loc in location_list:
+        if "coordinates" in loc and "coordinates" in new_location:
+            loc_coords = (loc["coordinates"]["latitude"], loc["coordinates"]["longitude"])
+            new_loc_coords = (new_location["coordinates"]["latitude"], new_location["coordinates"]["longitude"])
+            distance_km = geodesic(loc_coords, new_loc_coords).km
+            distances.append({"from": loc["name"], "to": new_location["name"], "distance_km": distance_km})
+    return distances
 
 # Cargar datos de ambas carpetas
 locations_data = load_cleaned_texts([LANDMARKS_DIR, MUNICIPALITIES_DIR])
@@ -102,12 +74,12 @@ prompt_template = PromptTemplate(
     The itinerary **MUST** follow this exact format:
     
     Day 1:
-    - Visit location A (Lat: X, Lon: Y)
+    - Visit location A 
     - Enjoy activity B
     - Stay at location C
     
     Day 2:
-    - Visit location D (Lat: X, Lon: Y)
+    - Visit location D
     - Try activity E
     - Explore location F
     
