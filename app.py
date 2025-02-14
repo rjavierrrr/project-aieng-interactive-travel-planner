@@ -78,7 +78,8 @@ prompt_template = PromptTemplate(
     
     If the user specifies the number of days and an interest (e.g., beaches, history, hiking), create a structured itinerary where each day has specific suggested locations, activities, and key landmarks.
     
-    Example output:
+    The itinerary **MUST** follow this exact format:
+    
     Day 1:
     - Visit location A
     - Enjoy activity B
@@ -88,6 +89,8 @@ prompt_template = PromptTemplate(
     - Visit location D
     - Try activity E
     - Explore location F
+    
+    If any day is missing, ensure to generate an activity for it.
     
     Use the following knowledge base:
     {context}
