@@ -23,8 +23,8 @@ EMBEDDING_MODEL = "text-embedding-ada-002"
 
 # Directorio de datos
 BASE_DATA_DIR = "data"
-LANDMARKS_DIR = os.path.join(BASE_DATA_DIR, "landmarks")
-MUNICIPIOS_DIR = os.path.join(BASE_DATA_DIR, "municipios")
+LANDMARKS_DIR = os.path.join(BASE_DATA_DIR, "landmark")
+MUNICIPALITIES_DIR = os.path.join(BASE_DATA_DIR, "municipalities")
 
 # Función para dividir texto en fragmentos pequeños
 def chunk_text(text, chunk_size=500):
@@ -50,7 +50,7 @@ def load_cleaned_texts(directories):
     return texts
 
 # Cargar datos de ambas carpetas
-landmarks = load_cleaned_texts([LANDMARKS_DIR, MUNICIPIOS_DIR])
+landmarks = load_cleaned_texts([LANDMARKS_DIR, MUNICIPALITIES_DIR])
 
 # Cargar datos solo si el índice no existe
 VECTOR_DB_PATH = "vector_store/faiss_index"
