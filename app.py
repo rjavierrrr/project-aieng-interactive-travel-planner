@@ -3,6 +3,7 @@ import os
 import openai
 import requests
 import json
+import re
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.chat_models import ChatOpenAI
@@ -105,6 +106,16 @@ def get_weather(location):
             }
     return {"error": "Could not fetch weather data."}
 
+# Extraer la primera ubicación válida
+def extract_valid_location(itinerary_text):
+    puerto_rico_places = ["San Juan", "Ponce", "Mayagüez", "Arecibo", "Caguas", "Fajardo", "Rincón", "Vieques", "Culebra", "Isabela", "Guayama", "Yauco", "Humacao"]
+    
+    for line in itinerary_text.split("\n"):
+        for place in puerto_rico_places:
+            if place.lower() in line.lower():
+                return place
+    return "San Juan"  # Fallback si no encuentra un lugar válido
+
 # Interfaz con Streamlit
 st.title("Puerto Rico Travel Planner")
 
@@ -122,7 +133,7 @@ if st.button("Get Itinerary"):
 
         # Clima para el primer destino del itinerario
         st.write("### Weather Forecast:")
-        first_location = itinerary["result"].split("\n")[0] if itinerary["result"] else "San Juan"
+        first_location = extract_valid_location(itinerary["result"])
         weather_data = get_weather(first_location)
         st.json(weather_data)
     else:
