@@ -75,7 +75,12 @@ retriever = vector_store.as_retriever()
 prompt_template = PromptTemplate(
     template="""
     You are a chatbot specialized in Puerto Rico tourism.
-    Answer the user's questions about travel destinations, landmarks, and activities in Puerto Rico.
+    Your job is to help users plan their trip by providing detailed itineraries based on their preferences.
+    
+    If the user specifies the number of days and an interest (e.g., beaches, history, hiking), create a structured itinerary including suggested locations, activities, and key landmarks.
+    
+    If the user does not specify these details, provide general information about Puerto Rico's tourist attractions.
+    
     Use the following knowledge base:
     {context}
     
@@ -113,6 +118,8 @@ st.title("Puerto Rico Travel Chatbot")
 
 # Inicializar sesión del chat
 if "messages" not in st.session_state:
+    st.session_state["messages"] = []
+    st.session_state["messages"].append({"role": "assistant", "content": "Hello! How many days do you plan to stay in Puerto Rico?"})
     st.session_state["messages"] = []
 
 # Mostrar mensajes previos
