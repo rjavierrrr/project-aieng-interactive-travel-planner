@@ -10,17 +10,23 @@ from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from bs4 import BeautifulSoup
 from datetime import datetime
+import hashlib
 
-# Cargar API keys desde variables de entorno
+# Cargar API Keys desde variables de entorno
 openai.api_key = os.getenv("OPENAI_API_KEY")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
-# Definir modelo más económico
+# Definir modelo optimizado
 LLM_MODEL = "gpt-3.5-turbo"
-EMBEDDING_MODEL = "text-embedding-3-small"
+EMBEDDING_MODEL = "text-embedding-ada-002"
 
 # Directorio de datos
 DATA_DIR = "data/landmark"
+
+# Función para dividir texto en fragmentos pequeños
+def chunk_text(text, chunk_size=500):
+    words = text.split()
+    return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
 # Cargar y limpiar archivos
 def load_cleaned_texts(directory):
@@ -30,17 +36,28 @@ def load_cleaned_texts(directory):
             raw_html = file.read()
             soup = BeautifulSoup(raw_html, "html.parser")
             text = soup.get_text().strip()
-            texts.append(text)
+            texts.extend(chunk_text(text))  # Dividir texto en fragmentos pequeños
     return texts
+
+# Cargar datos solo si el índice no existe
+VECTOR_DB_PATH = "vector_store/faiss_index"
 
 if os.path.exists(DATA_DIR):
     landmarks = load_cleaned_texts(DATA_DIR)
 else:
     landmarks = []
 
-# Crear embeddings y vector store
-embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
-vector_store = FAISS.from_texts(landmarks, embeddings)
+# Evitar re-procesamiento si ya existe un índice
+def get_vector_store():
+    if os.path.exists(VECTOR_DB_PATH):
+        return FAISS.load_local(VECTOR_DB_PATH, OpenAIEmbeddings(model=EMBEDDING_MODEL))
+    else:
+        embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
+        vector_store = FAISS.from_texts(landmarks, embeddings)
+        vector_store.save_local(VECTOR_DB_PATH)  # Guardar índice localmente
+        return vector_store
+
+vector_store = get_vector_store()
 retriever = vector_store.as_retriever()
 
 # Definir prompt para el chatbot
