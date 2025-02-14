@@ -49,7 +49,7 @@ def load_cleaned_texts(directory):
 # Cargar datos solo si el índice no existe
 VECTOR_DB_PATH = "vector_store/faiss_index"
 
-landmarks = load_cleaned_texts(DATA_DIR, max_files=30)
+landmarks = load_cleaned_texts(DATA_DIR)
 
 # Evitar re-procesamiento si ya existe un índice
 def get_vector_store():
