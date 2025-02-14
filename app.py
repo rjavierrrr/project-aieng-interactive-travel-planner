@@ -22,35 +22,38 @@ LLM_MODEL = "gpt-3.5-turbo"
 EMBEDDING_MODEL = "text-embedding-ada-002"
 
 # Directorio de datos
-DATA_DIR = "data/landmark"
+BASE_DATA_DIR = "data"
+LANDMARK_DIR = os.path.join(BASE_DATA_DIR, "landmark")
+MUNICIPALITIES_DIR = os.path.join(BASE_DATA_DIR, "municipalities")
 
 # Función para dividir texto en fragmentos pequeños
 def chunk_text(text, chunk_size=500):
     words = text.split()
     return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
-# Cargar solo los primeros 30 archivos y limpiar textos
-def load_cleaned_texts(directory, max_files=30):
+# Cargar y limpiar textos de múltiples directorios
+def load_cleaned_texts(directories, max_files=30):
     texts = []
-    if not os.path.exists(directory):
-        return texts
-    
-    files = sorted(os.listdir(directory))[:max_files]  # Solo los primeros 30 archivos
-    for filename in files:
-        with open(os.path.join(directory, filename), "r", encoding="utf-8") as file:
-            raw_html = file.read()
-            soup = BeautifulSoup(raw_html, "html.parser")
-            for script in soup(["script", "style", "header", "footer", "nav", "aside"]):
-                script.extract()
-            text = soup.get_text(separator=" ").strip()
-            cleaned_text = " ".join(text.split())
-            texts.extend(chunk_text(cleaned_text))  # Dividir texto en fragmentos pequeños
+    for directory in directories:
+        if not os.path.exists(directory):
+            continue
+        files = sorted(os.listdir(directory))[:max_files]  # Solo los primeros 30 archivos por directorio
+        for filename in files:
+            with open(os.path.join(directory, filename), "r", encoding="utf-8") as file:
+                raw_html = file.read()
+                soup = BeautifulSoup(raw_html, "html.parser")
+                for script in soup(["script", "style", "header", "footer", "nav", "aside"]):
+                    script.extract()
+                text = soup.get_text(separator=" ").strip()
+                cleaned_text = " ".join(text.split())
+                texts.extend(chunk_text(cleaned_text))  # Dividir texto en fragmentos pequeños
     return texts
+
+# Cargar datos de ambas carpetas
+landmarks = load_cleaned_texts([LANDMARK_DIR, MUNICIPALITIES_DIR], max_files=30)
 
 # Cargar datos solo si el índice no existe
 VECTOR_DB_PATH = "vector_store/faiss_index"
-
-landmarks = load_cleaned_texts(DATA_DIR, max_files=30)
 
 # Evitar re-procesamiento si ya existe un índice
 def get_vector_store():
@@ -58,7 +61,7 @@ def get_vector_store():
         return FAISS.load_local(VECTOR_DB_PATH, OpenAIEmbeddings(model=EMBEDDING_MODEL), allow_dangerous_deserialization=True)
     else:
         if not landmarks:
-            st.error("No landmark data found. Please check your data directory.")
+            st.error("No landmark or municipality data found. Please check your data directory.")
             st.stop()
         embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
         vector_store = FAISS.from_texts(landmarks, embeddings)
@@ -73,9 +76,9 @@ prompt_template = PromptTemplate(
     template="""
     You are a travel assistant specialized in Puerto Rico tourism.
     The user wants to visit places for {days} days.
-    Suggest a detailed itinerary based on available landmarks.
+    Suggest a detailed itinerary based on available landmarks and municipalities.
     
-    Based on the following landmarks information:
+    Based on the following information:
     {context}
     
     Question: {query}
@@ -106,15 +109,13 @@ def get_weather(location):
             }
     return {"error": "Could not fetch weather data."}
 
-# Extraer la primera ubicación válida
-def extract_valid_location(itinerary_text):
-    puerto_rico_places = ["San Juan", "Ponce", "Mayagüez", "Arecibo", "Caguas", "Fajardo", "Rincón", "Vieques", "Culebra", "Isabela", "Guayama", "Yauco", "Humacao"]
-    
-    for line in itinerary_text.split("\n"):
-        for place in puerto_rico_places:
-            if place.lower() in line.lower():
-                return place
-    return "San Juan"  # Fallback si no encuentra un lugar válido
+# Extraer todas las ubicaciones del itinerario
+def extract_valid_locations(itinerary_text):
+    puerto_rico_places = [
+        "Adjuntas", "Aguada", "Aguadilla", "Aguas Buenas", "Aibonito", "Añasco", "Arecibo", "Arroyo", "Barceloneta", "Barranquitas", "Bayamón", "Cabo Rojo", "Caguas", "Camuy", "Canóvanas", "Carolina", "Cataño", "Cayey", "Ceiba", "Ciales", "Cidra", "Coamo", "Comerío", "Corozal", "Culebra", "Dorado", "Fajardo", "Florida", "Guánica", "Guayama", "Guayanilla", "Guaynabo", "Gurabo", "Hatillo", "Hormigueros", "Humacao", "Isabela", "Jayuya", "Juana Díaz", "Juncos", "Lajas", "Lares", "Las Marías", "Las Piedras", "Loíza", "Luquillo", "Manatí", "Maricao", "Maunabo", "Mayagüez", "Moca", "Morovis", "Naguabo", "Naranjito", "Orocovis", "Patillas", "Peñuelas", "Ponce", "Quebradillas", "Rincón", "Río Grande", "Sabana Grande", "Salinas", "San Germán", "San Juan", "San Lorenzo", "San Sebastián", "Santa Isabel", "Toa Alta", "Toa Baja", "Trujillo Alto", "Utuado", "Vega Alta", "Vega Baja", "Vieques", "Villalba", "Yabucoa", "Yauco"
+    ]
+    found_locations = [place for place in puerto_rico_places if place.lower() in itinerary_text.lower()]
+    return found_locations if found_locations else ["San Juan"]
 
 # Interfaz con Streamlit
 st.title("Puerto Rico Travel Planner")
@@ -130,11 +131,9 @@ if st.button("Get Itinerary"):
     if "result" in itinerary:
         st.write("### Suggested Itinerary:")
         st.write(itinerary["result"])
-
-        # Clima para el primer destino del itinerario
         st.write("### Weather Forecast:")
-        first_location = extract_valid_location(itinerary["result"])
-        weather_data = get_weather(first_location)
-        st.json(weather_data)
+        locations = extract_valid_locations(itinerary["result"])
+        weather_reports = {loc: get_weather(loc) for loc in locations}
+        st.json(weather_reports)
     else:
         st.error("No itinerary could be generated. Please try again with different inputs.")
