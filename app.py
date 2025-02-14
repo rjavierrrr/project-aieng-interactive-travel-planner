@@ -1,28 +1,30 @@
 import streamlit as st
-import os
-import json
 import requests
-from datetime import datetime
+import os
+import openai
+import pickle
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores import FAISS
+from langchain.llms import OpenAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-from langchain_community.llms import OpenAI
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from streamlit_folium import folium_static
+import folium
+import json
+from bs4 import BeautifulSoup
 from geopy.geocoders import Nominatim
+from datetime import datetime
 
-# Cargar claves API desde variables de entorno
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+# Load OpenAI API Key from GitHub Secrets
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Cargar el modelo de embeddings
-embeddings = OpenAIEmbeddings()
+# Load embedding model (cheaper version)
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
-# Cargar datos desde archivos
+# Load data from text files (excluding news)
 DATA_DIR = "data"
-landmarks, municipalities, news = [], [], []
-
-# Ubicaciones bloqueadas
-locked_locations = []
+landmarks, municipalities = [], []
 
 def load_text_files(directory):
     texts = []
@@ -35,65 +37,96 @@ if os.path.exists(f"{DATA_DIR}/landmarks"):
     landmarks = load_text_files(f"{DATA_DIR}/landmarks")
 if os.path.exists(f"{DATA_DIR}/municipalities"):
     municipalities = load_text_files(f"{DATA_DIR}/municipalities")
-if os.path.exists(f"{DATA_DIR}/news"):
-    news = load_text_files(f"{DATA_DIR}/news")
 
-# Combinar textos para el vector store
-documents = landmarks + municipalities + news
-vector_store = FAISS.from_texts(documents, embeddings)
+# Combine all texts for embedding
+documents = landmarks + municipalities
+
+# Split text into smaller chunks to avoid token limits
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=50)
+split_documents = text_splitter.split_text(" ".join(documents))
+
+# Cache FAISS Vector Store to avoid recomputing embeddings every run
+VECTOR_STORE_PATH = "vector_store.pkl"
+if os.path.exists(VECTOR_STORE_PATH):
+    with open(VECTOR_STORE_PATH, "rb") as f:
+        vector_store = pickle.load(f)
+else:
+    vector_store = FAISS.from_texts(split_documents, embeddings)
+    with open(VECTOR_STORE_PATH, "wb") as f:
+        pickle.dump(vector_store, f)
+
 retriever = vector_store.as_retriever()
 
-# Crear el modelo de QA
-qa_chain = RetrievalQA.from_chain_type(
-    llm=OpenAI(api_key=OPENAI_API_KEY), retriever=retriever)
+# Define a custom prompt for travel assistant
+prompt_template = PromptTemplate(
+    template="""
+    You are a friendly and knowledgeable travel assistant specializing in Puerto Rico tourism. 
+    Provide engaging and informative responses about places based on user preferences.
+    
+    User's Question: {question}
+    """,
+    input_variables=["question"]
+)
 
-def get_weather(location, date):
-    url = f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={location}&days=1"
+qa_chain = RetrievalQA.from_chain_type(llm=OpenAI(model_name="gpt-3.5-turbo", temperature=0.7), retriever=retriever, chain_type_kwargs={"prompt": prompt_template})
+
+# Weather API Key from GitHub Secrets
+API_KEY = os.getenv("WEATHER_API_KEY")
+
+def get_weather(location):
+    """Fetch weather data for a given location."""
+    url = f"http://api.weatherapi.com/v1/current.json?key={API_KEY}&q={location}&aqi=no"
     response = requests.get(url)
     if response.status_code == 200:
         return response.json()
     return {"error": "Could not fetch weather data."}
 
 def recommend_locations(user_interest):
-    return qa_chain.run(user_interest)
+    """Finds locations based on user interest using LangChain retrieval."""
+    result = qa_chain.run(user_interest)
+    return result
 
 def get_coordinates(location):
+    """Gets latitude and longitude of a given location."""
     geolocator = Nominatim(user_agent="geoapiExercises")
     loc = geolocator.geocode(location)
     return (loc.latitude, loc.longitude) if loc else (None, None)
 
-def generate_itinerary(days, locations):
+def generate_itinerary(locations, days):
+    """Creates a structured itinerary JSON based on recommended locations and user-selected days."""
     itinerary = {}
     for i in range(days):
         if i < len(locations):
-            itinerary[f"Day {i+1}"] = {
+            itinerary[f"day_{i+1}"] = {
                 "location": locations[i],
                 "coordinates": get_coordinates(locations[i])
             }
     return json.dumps(itinerary, indent=4)
 
-# Interfaz de Streamlit
+# Streamlit UI for chatbot interaction
 st.title("Puerto Rico Travel Chatbot")
 
-start_date = st.date_input("Select your travel start date:")
-days = st.number_input("Number of days traveling:", min_value=1, step=1)
-interest = st.text_input("Enter your travel interest (e.g., beaches, history, hiking):")
+# Ask user for travel dates
+days = st.number_input("How many days will you stay in Puerto Rico?", min_value=1, max_value=30, step=1)
 
+# Ask for user interests
+interest = st.text_input("What are you interested in? (e.g., beaches, history, hiking):")
 if st.button("Get Recommendations"):
     recommendations = recommend_locations(interest)
     st.write("Recommended places to visit:")
     st.write(recommendations)
+
+    # Allow users to lock locations
     selected_location = st.selectbox("Lock a location to visit", recommendations.split('\n'))
-    
-    if st.button("Lock Location"):
-        locked_locations.append(selected_location)
-        st.write(f"Locked Locations: {locked_locations}")
-    
-    itinerary = generate_itinerary(days, locked_locations)
-    st.write("Suggested Itinerary:")
-    st.json(itinerary)
-    
-    for loc in locked_locations:
-        weather = get_weather(loc, start_date)
-        if "rain" in str(weather).lower():
-            st.warning(f"Warning: {loc} might have bad weather!")
+    locked_locations = [selected_location]
+
+    if st.button("Confirm Locations"):
+        itinerary = generate_itinerary(locked_locations, days)
+        st.write("Your suggested itinerary:")
+        st.json(itinerary)
+
+        # Check weather for selected locations
+        for loc in locked_locations:
+            weather = get_weather(loc)
+            if "rain" in str(weather).lower():
+                st.warning(f"Warning: {loc} might have bad weather!")
