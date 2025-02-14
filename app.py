@@ -54,7 +54,7 @@ landmarks = load_cleaned_texts(DATA_DIR, max_files=30)
 # Evitar re-procesamiento si ya existe un índice
 def get_vector_store():
     if os.path.exists(VECTOR_DB_PATH):
-        return FAISS.load_local(VECTOR_DB_PATH, OpenAIEmbeddings(model=EMBEDDING_MODEL))
+        return FAISS.load_local(VECTOR_DB_PATH, OpenAIEmbeddings(model=EMBEDDING_MODEL), allow_dangerous_deserialization=True)
     else:
         if not landmarks:
             st.error("No landmark data found. Please check your data directory.")
