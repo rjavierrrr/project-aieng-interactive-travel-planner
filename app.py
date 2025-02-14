@@ -16,14 +16,14 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
 # 🔹 Configuración de modelos
-EMBEDDING_MODEL = "text-embedding-3-small"  # Cambia a "text-embedding-3-large" si necesitas más precisión
-LLM_MODEL = "gpt-3.5-turbo"  # Cambia a "gpt-4-turbo" si el presupuesto lo permite
+EMBEDDING_MODEL = "text-embedding-3-small"
+LLM_MODEL = "gpt-3.5-turbo"
 
 # 🔹 Cargar embeddings
 embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
 
 # 🔹 Directorio de datos
-DATA_DIR = "data/landmark"
+DATA_DIR = "data/landmarks"
 
 # 🔹 Función para cargar archivos de texto
 def load_text_files(directory):
@@ -33,7 +33,7 @@ def load_text_files(directory):
             texts.append(file.read())
     return texts
 
-# 🔹 Cargar datos de landmarks
+# 🔹 Cargar solo data de landmarks
 documents = load_text_files(DATA_DIR)
 
 # 🔹 Optimización: dividir en chunks más pequeños
@@ -45,26 +45,28 @@ BATCH_SIZE = 20
 vector_store = FAISS.from_texts(flattened_docs[:BATCH_SIZE], embeddings)
 retriever = vector_store.as_retriever()
 
-# 🔹 Configuración del chatbot
+# 🔹 Prompt corregido para incluir 'context'
 prompt_template = PromptTemplate(
     template="""
     You are an expert travel assistant for Puerto Rico.
-    Generate an itinerary based on {days} days of travel.
+    Generate an itinerary for {days} days of travel based on the following information:
+    
+    {context}
     
     Example:
     User: "I have 3 days, I like nature and culture."
     Assistant: "Day 1: Visit El Yunque Rainforest..."
     
-    Now generate the best itinerary:
-    {question}
+    Now generate the best itinerary based on the given context.
     """,
-    input_variables=["days", "question"]
+    input_variables=["days", "context"]
 )
 
+# 🔹 Ajuste de RetrievalQA con el nuevo Prompt
 qa_chain = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(model=LLM_MODEL),
     retriever=retriever,
-    chain_type_kwargs={"prompt": prompt_template}
+    chain_type_kwargs={"prompt": prompt_template, "document_variable_name": "context"}
 )
 
 # 🔹 API del clima (WeatherAPI)
@@ -87,7 +89,8 @@ interest = st.text_input("Enter your travel interest (e.g., beaches, history, hi
 
 if st.button("Get Itinerary"):
     question = f"I have {days} days and I am interested in {interest}."
-    itinerary = qa_chain.run({"days": days, "question": question})
+    itinerary = qa_chain.run({"days": days, "context": question})
+    
     st.write("### Suggested Itinerary:")
     st.write(itinerary)
 
